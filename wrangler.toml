@@ -1,0 +1,9 @@
+name = "browser-permission-tester"
+main = "src/index.js"
+compatibility_date = "2024-07-01"
+
+[env.production]
+name = "browser-permission-tester"
+
+[env.dev]
+name = "browser-permission-tester-dev"

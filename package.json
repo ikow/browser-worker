@@ -1,0 +1,14 @@
+{
+  "name": "browser-permission-tester",
+  "version": "1.0.0",
+  "description": "Browser permissions testing tool for security research",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240729.0",
+    "wrangler": "^3.0.0"
+  }
+}

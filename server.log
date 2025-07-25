@@ -1,0 +1,260 @@
+
+> browser-permission-tester@1.0.0 dev
+> wrangler dev
+
+
+ ⛅️ wrangler 3.114.11 (update available 4.26.0)
+-----------------------------------------------
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mThe version of Wrangler you are using is now out-of-date.[0m
+
+  Please update to the latest version to prevent critical errors.
+  Run `npm install --save-dev wrangler@4` to update to the latest version.
+  After installation, run Wrangler with `npx wrangler`.
+
+
+No bindings found.
+⎔ Starting local server...
+[wrangler:inf] Ready on http://localhost:8787
+[wrangler:inf] HEAD / 200 OK (6ms)
+[wrangler:inf] GET / 200 OK (4ms)
+[wrangler:inf] GET /favicon.ico 404 Not Found (1ms)
+[wrangler:inf] GET / 200 OK (0ms)
+[wrangler:inf] GET / 200 OK (1ms)
+[wrangler:inf] GET /.well-known/appspecific/com.chrome.devtools.json 404 Not Found (2ms)
+[wrangler:inf] GET / 200 OK (2ms)
+[wrangler:inf] GET /.well-known/appspecific/com.chrome.devtools.json 404 Not Found (3ms)
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+[wrangler:inf] HEAD / 200 OK (2ms)
+[wrangler:inf] GET / 200 OK (1ms)
+[wrangler:inf] GET / 200 OK (3ms)
+[wrangler:inf] GET /.well-known/appspecific/com.chrome.devtools.json 404 Not Found (2ms)
+[wrangler:inf] GET / 200 OK (3ms)
+[wrangler:inf] GET /.well-known/appspecific/com.chrome.devtools.json 404 Not Found (2ms)
+[wrangler:inf] GET / 200 OK (5ms)
+[wrangler:inf] GET /.well-known/appspecific/com.chrome.devtools.json 404 Not Found (2ms)
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+[wrangler:inf] GET / 200 OK (2ms)
+[wrangler:inf] GET / 200 OK (1ms)
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+[wrangler:inf] HEAD / 200 OK (3ms)
+[wrangler:inf] GET / 200 OK (1ms)
+[wrangler:inf] GET / 200 OK (5ms)
+[wrangler:inf] GET /.well-known/appspecific/com.chrome.devtools.json 404 Not Found (2ms)
+Permission test result: {
+  "timestamp": "2025-07-24T18:18:05.279Z",
+  "type": "info",
+  "message": "Browser Permission Tester loaded successfully"
+}
+[wrangler:inf] POST /api/log 200 OK (22ms)
+Permission test result: {
+  "timestamp": "2025-07-24T18:18:05.281Z",
+  "type": "info",
+  "message": "User Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+}
+[wrangler:inf] POST /api/log 200 OK (22ms)
+Permission test result: {
+  "timestamp": "2025-07-24T18:18:12.165Z",
+  "type": "success",
+  "message": "Shell script generated and downloaded: test.sh"
+}
+[wrangler:inf] POST /api/log 200 OK (3ms)
+Permission test result: {
+  "type": "script_generation",
+  "filename": "test.sh",
+  "size": 16,
+  "timestamp": "2025-07-24T18:18:12.166Z"
+}
+[wrangler:inf] POST /api/log 200 OK (3ms)
+⎔ Reloading local server...
+⎔ Reloading local server...
+[wrangler:inf] HEAD / 200 OK (3ms)
+[wrangler:inf] POST /api/download-script 500 Internal Server Error (2ms)
+Server-side download request: {
+  filename: 'test.sh',
+  contentLength: 9,
+  timestamp: '2025-07-24T18:27:57.310Z',
+  userAgent: 'curl/8.7.1',
+  origin: null
+}
+[wrangler:inf] POST /api/download-script 200 OK (6ms)
+[wrangler:inf] GET / 200 OK (5ms)
+[wrangler:inf] GET /.well-known/appspecific/com.chrome.devtools.json 404 Not Found (1ms)
+Permission test result: {
+  "timestamp": "2025-07-24T18:29:04.918Z",
+  "type": "info",
+  "message": "Browser Permission Tester loaded successfully"
+}
+Permission test result: {
+  "timestamp": "2025-07-24T18:29:04.920Z",
+  "type": "info",
+  "message": "User Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+}
+[wrangler:inf] POST /api/log 200 OK (3ms)
+[wrangler:inf] POST /api/log 200 OK (4ms)
+Permission test result: {
+  "timestamp": "2025-07-24T18:29:12.398Z",
+  "type": "success",
+  "message": "Downloaded via blob method: test.sh"
+}
+Permission test result: {
+  "type": "script_generation",
+  "filename": "test.sh",
+  "size": 16,
+  "timestamp": "2025-07-24T18:29:12.399Z"
+}
+[wrangler:inf] POST /api/log 200 OK (9ms)
+[wrangler:inf] POST /api/log 200 OK (6ms)
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+[wrangler:inf] HEAD / 200 OK (2ms)
+Download by ID request: {
+  downloadId: 'test123',
+  timestamp: '2025-07-24T18:36:39.333Z',
+  userAgent: 'curl/8.7.1',
+  origin: null
+}
+[wrangler:inf] GET /api/download-by-id 200 OK (7ms)
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+[wrangler:inf] HEAD / 200 OK (3ms)
+Server-side download request: {
+  filename: 'test.sh',
+  contentLength: 10,
+  timestamp: '2025-07-24T18:52:59.643Z',
+  userAgent: 'curl/8.7.1',
+  origin: null
+}
+[wrangler:inf] POST /api/download-script 200 OK (5ms)
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+[wrangler:inf] HEAD / 200 OK (2ms)
+[wrangler:inf] GET / 200 OK (5ms)
+[wrangler:inf] GET /.well-known/appspecific/com.chrome.devtools.json 404 Not Found (3ms)
+Permission test result: {
+  "timestamp": "2025-07-24T18:58:19.620Z",
+  "type": "info",
+  "message": "Browser Permission Tester loaded successfully"
+}
+[wrangler:inf] POST /api/log 200 OK (13ms)
+Permission test result: {
+  "timestamp": "2025-07-24T18:58:19.622Z",
+  "type": "info",
+  "message": "User Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+}
+[wrangler:inf] POST /api/log 200 OK (14ms)
+Permission test result: {
+  "timestamp": "2025-07-24T18:58:31.105Z",
+  "type": "success",
+  "message": "Permission test template loaded"
+}
+[wrangler:inf] POST /api/log 200 OK (4ms)
+Permission test result: {
+  "timestamp": "2025-07-24T18:58:32.597Z",
+  "type": "success",
+  "message": "Downloaded via data URL method: permission-test.sh"
+}
+Permission test result: {
+  "type": "script_generation",
+  "filename": "permission-test.sh",
+  "size": 1435,
+  "timestamp": "2025-07-24T18:58:32.598Z"
+}
+[wrangler:inf] POST /api/log 200 OK (3ms)
+[wrangler:inf] POST /api/log 200 OK (4ms)
+⎔ Reloading local server...
+⎔ Reloading local server...
+[wrangler:inf] HEAD /files/permission-test.sh 404 Not Found (2ms)
+Static file download: {
+  filename: 'permission-test.sh',
+  fileSize: 1525,
+  timestamp: '2025-07-24T21:22:27.934Z',
+  userAgent: 'curl/8.7.1',
+  origin: null
+}
+[wrangler:inf] GET /files/permission-test.sh 200 OK (7ms)
+[wrangler:inf] GET /files/ 200 OK (1ms)
+[wrangler:inf] HEAD /files/system-info.sh 404 Not Found (1ms)
+[wrangler:inf] HEAD /files/reverse-shell-test.sh 404 Not Found (1ms)
+[wrangler:inf] GET /files/ 200 OK (1ms)
+Static file download: {
+  filename: 'system-info.sh',
+  fileSize: 881,
+  timestamp: '2025-07-24T21:22:46.534Z',
+  userAgent: 'curl/8.7.1',
+  origin: null
+}
+[wrangler:inf] GET /files/system-info.sh 200 OK (1ms)
+Static file download: {
+  filename: 'web-test.sh',
+  fileSize: 1543,
+  timestamp: '2025-07-24T21:22:50.599Z',
+  userAgent: 'curl/8.7.1',
+  origin: null
+}
+[wrangler:inf] GET /files/web-test.sh 200 OK (1ms)
+[wrangler:inf] GET / 200 OK (8ms)
+Permission test result: {
+  "timestamp": "2025-07-24T21:23:12.855Z",
+  "type": "info",
+  "message": "Browser Permission Tester loaded successfully"
+}
+Permission test result: {
+  "timestamp": "2025-07-24T21:23:12.868Z",
+  "type": "info",
+  "message": "User Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+}
+[wrangler:inf] POST /api/log 200 OK (4ms)
+[wrangler:inf] POST /api/log 200 OK (4ms)
+[wrangler:inf] GET /files/ 200 OK (3ms)
+Static file download: {
+  filename: 'permission-test.sh',
+  fileSize: 1525,
+  timestamp: '2025-07-24T21:23:26.122Z',
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+  origin: null
+}
+[wrangler:inf] GET /files/permission-test.sh 200 OK (5ms)
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
