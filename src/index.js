@@ -1427,7 +1427,7 @@ class CommandAPIHandler(http.server.BaseHTTPRequestHandler):
         print(f"[{self.date_time_string()}] {format % args}")
 
 def main():
-    PORT = int(os.environ.get('PORT', 8080))
+    PORT = int(os.environ.get('PORT', 8881))
     
     print("🔧 Simple Command API Server (GET)")
     print(f"📡 Starting on port {PORT}")
