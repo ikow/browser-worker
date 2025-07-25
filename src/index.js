@@ -452,7 +452,7 @@ export default {
       if (fileContent) {
         let downloadFilename = filename;
         if (filename === 'web-shell') {
-          downloadFilename = 'web-shell.py';
+          downloadFilename = 'web-shell';
         } else if (!filename.includes('.')) {
           downloadFilename = filename + '.sh';
         }
