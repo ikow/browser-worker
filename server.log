@@ -399,3 +399,18 @@ No bindings found.
 ⎔ Reloading local server...
 ⎔ Reloading local server...
 ⎔ Reloading local server...
+⎔ Reloading local server...
+[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mservice core:user:browser: Uncaught ReferenceError: i is not defined[0m
+
+    at null.<anonymous> (index.js:2022:34)
+
+
+
+[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mThe Workers runtime failed to start. There is likely additional logging output above.[0m
+
+
+[32mIf you think this is a bug then please create an issue at https://github.com/cloudflare/workers-sdk/issues/new/choose[0m
+Note that there is a newer version of Wrangler available (4.26.0). Consider checking whether upgrading resolves this error.
+? Would you like to report this error to Cloudflare? Wrangler's output and the error details will be shared with the Wrangler team to help us diagnose and fix the issue.
+🤖 Using fallback value in non-interactive context: no
+🪵  Logs were written to "/Users/qdeng/Library/Preferences/.wrangler/logs/wrangler-2025-07-24_17-43-48_789.log"

@@ -1908,7 +1908,475 @@ else
     log "\${RED}[FAILURE]\${NC} No successful proxy connections detected"
 fi
 
-log "\${BLUE}[INFO]\${NC} Status saved to: /tmp/proxy_status.txt"`
+log "\${BLUE}[INFO]\${NC} Status saved to: /tmp/proxy_status.txt"`,
+
+  'network-enum': `#!/bin/bash
+
+# Network Subnet Enumeration Script
+# Targets: 172.30.0.* and 172.18.0.* subnets
+# Discovers hosts, services, and open ports
+
+OUTPUT_FILE="network_enum_$(date +%Y%m%d_%H%M%S).log"
+RESULTS_DIR="network_enum_results_$(date +%Y%m%d_%H%M%S)"
+TIMESTAMP=$(date)
+
+# Colors
+RED='\\033[0;31m'
+GREEN='\\033[0;32m'
+YELLOW='\\033[1;33m'
+BLUE='\\033[0;34m'
+CYAN='\\033[0;36m'
+NC='\\033[0m'
+
+# Create results directory
+mkdir -p "$RESULTS_DIR"
+
+log() {
+    echo -e "$1" | tee -a "$OUTPUT_FILE"
+}
+
+log_section() {
+    echo "" | tee -a "$OUTPUT_FILE"
+    echo "===========================================" | tee -a "$OUTPUT_FILE"
+    echo "$1" | tee -a "$OUTPUT_FILE"
+    echo "===========================================" | tee -a "$OUTPUT_FILE"
+}
+
+# Optimized host discovery with known intelligence
+ping_sweep() {
+    local subnet="$1"
+    local subnet_name="$2"
+    local results_file="$RESULTS_DIR/live_hosts_\${subnet_name}.txt"
+    
+    log "\${BLUE}[PING SWEEP]\${NC} Discovering live hosts in $subnet"
+    
+    echo "# Live hosts in $subnet" > "$results_file"
+    echo "# Discovered: $(date)" >> "$results_file"
+    
+    local live_count=0
+    local scan_range
+    
+    # Optimize scan range based on known network information
+    if [ "$subnet" = "172.30.0" ]; then
+        # 172.30.0.0/28 = only 16 IPs (172.30.0.0 to 172.30.0.15)
+        scan_range="0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"
+        log "\${YELLOW}[OPTIMIZED]\${NC} Scanning /28 subnet (16 IPs only)"
+        
+        # Add known hosts from ARP table
+        echo "172.30.0.2" >> "$results_file"
+        echo "172.30.0.3" >> "$results_file"  # Our IP
+        echo "172.30.0.4" >> "$results_file"
+        live_count=3
+        log "\${GREEN}[KNOWN]\${NC} 172.30.0.2 (from ARP)"
+        log "\${GREEN}[KNOWN]\${NC} 172.30.0.3 (our IP)"
+        log "\${GREEN}[KNOWN]\${NC} 172.30.0.4 (from ARP)"
+        
+    elif [ "$subnet" = "172.18.0" ]; then
+        # 172.18.0.0/16 = full range, but focus on interesting ranges
+        scan_range=$(seq 1 254)
+        
+        # Add our known IP
+        echo "172.18.0.11" >> "$results_file"  # Our IP
+        echo "172.18.0.1" >> "$results_file"   # Gateway
+        live_count=2
+        log "\${GREEN}[KNOWN]\${NC} 172.18.0.1 (gateway)"
+        log "\${GREEN}[KNOWN]\${NC} 172.18.0.11 (our IP)"
+    else
+        scan_range=$(seq 1 254)
+    fi
+    
+    # Scan remaining IPs
+    for i in $scan_range; do
+        local ip="\${subnet}.\\${i}"
+        
+        # Skip IPs we already know about
+        if [ "$subnet" = "172.30.0" ] && [[ "$i" =~ ^(2|3|4)$ ]]; then
+            continue
+        fi
+        if [ "$subnet" = "172.18.0" ] && [[ "$i" =~ ^(1|11)$ ]]; then
+            continue
+        fi
+        
+        # Show progress every 50 hosts for large ranges
+        if [ "$subnet" = "172.18.0" ] && [ $((i % 50)) -eq 0 ]; then
+            log "\${CYAN}[PROGRESS]\${NC} Scanning $ip..."
+        fi
+        
+        # Ping with short timeout
+        if timeout 2 ping -c 1 -W 1 "$ip" >/dev/null 2>&1; then
+            echo "$ip" >> "$results_file"
+            log "\${GREEN}[LIVE]\${NC} $ip is alive"
+            ((live_count++))
+        fi
+    done
+    
+    log "\${BLUE}[SUMMARY]\${NC} Found $live_count live hosts in $subnet"
+    echo "$live_count" > "$RESULTS_DIR/live_count_\${subnet_name}.txt"
+}
+
+# TCP port scanning function
+port_scan() {
+    local ip="$1"
+    local scan_type="$2"
+    local results_file="$RESULTS_DIR/portscan_\${ip//./_}.txt"
+    
+    log "\${BLUE}[PORT SCAN]\${NC} Scanning $ip ($scan_type)"
+    
+    echo "# Port scan results for $ip" > "$results_file"
+    echo "# Scan type: $scan_type" >> "$results_file"
+    echo "# Timestamp: $(date)" >> "$results_file"
+    
+    local ports
+    case $scan_type in
+        "quick")
+            # Top common ports + known listening ports from our container
+            ports="21,22,23,25,53,80,110,111,135,139,143,443,873,1384,8888,9000,38889,57399,51247,993,995,1723,3389,5900,8080,8443"
+            ;;
+        "web")
+            # Web and proxy ports + known services
+            ports="80,443,8080,8081,8443,8888,8889,9000,9001,9090,3000,5000,7000,1384,873"
+            ;;
+        "common")
+            # Extended common ports + discovered services
+            ports="21,22,23,25,53,80,110,111,135,139,143,443,873,1384,8888,9000,38889,57399,51247,993,995,1723,3389,5900,8080,8443,1433,3306,5432,6379,27017,11211,9200,9300"
+            ;;
+        "container")
+            # Container-specific ports based on our services
+            ports="22,80,443,873,1384,8080,8443,8888,8889,9000,9001,5000,3000,2375,2376,2377,4243,4244,6443,8080,10250,10255"
+            ;;
+    esac
+    
+    local open_ports=()
+    
+    for port in \${ports//,/ }; do
+        if timeout 3 bash -c "echo >/dev/tcp/$ip/$port" 2>/dev/null; then
+            echo "$port/tcp open" >> "$results_file"
+            open_ports+=("$port")
+            log "\${GREEN}[OPEN]\${NC} $ip:$port"
+        fi
+    done
+    
+    # Store open ports count
+    echo "\${#open_ports[@]}" > "$RESULTS_DIR/openports_count_\${ip//./_}.txt"
+    echo "\${open_ports[*]}" > "$RESULTS_DIR/openports_list_\${ip//./_}.txt"
+    
+    return \${#open_ports[@]}
+}
+
+# Service detection function
+service_detection() {
+    local ip="$1"
+    local port="$2"
+    local results_file="$RESULTS_DIR/service_\${ip//./_}_\${port}.txt"
+    
+    log "\${CYAN}[SERVICE]\${NC} Detecting service on $ip:$port"
+    
+    echo "# Service detection for $ip:$port" > "$results_file"
+    echo "# Timestamp: $(date)" >> "$results_file"
+    
+    # HTTP detection
+    if [[ "$port" =~ ^(80|443|8080|8081|8443|8888|8889|9000|9001|9090|3000|5000|7000)$ ]]; then
+        log "\${BLUE}[HTTP]\${NC} Testing HTTP service on $ip:$port"
+        
+        local proto="http"
+        [[ "$port" =~ ^(443|8443)$ ]] && proto="https"
+        
+        # HTTP request with timeout
+        local http_response=$(timeout 10 curl -s -I -m 5 "$proto://$ip:$port/" 2>/dev/null | head -10)
+        if [ -n "$http_response" ]; then
+            echo "=== HTTP Response ===" >> "$results_file"
+            echo "$http_response" >> "$results_file"
+            
+            # Extract server information
+            local server=$(echo "$http_response" | grep -i "server:" | head -1)
+            if [ -n "$server" ]; then
+                log "\${GREEN}[HTTP]\${NC} $ip:$port - $server"
+            fi
+        fi
+        
+        # Try to get the page content
+        local content=$(timeout 10 curl -s -m 5 "$proto://$ip:$port/" 2>/dev/null | head -20)
+        if [ -n "$content" ]; then
+            echo "=== Content Preview ===" >> "$results_file"
+            echo "$content" >> "$results_file"
+        fi
+    fi
+    
+    # SSH detection
+    if [ "$port" = "22" ]; then
+        log "\${BLUE}[SSH]\${NC} Testing SSH service on $ip:$port"
+        local ssh_banner=$(timeout 10 bash -c "echo | nc $ip $port" 2>/dev/null | head -1)
+        if [ -n "$ssh_banner" ]; then
+            echo "SSH Banner: $ssh_banner" >> "$results_file"
+            log "\${GREEN}[SSH]\${NC} $ip:$port - $ssh_banner"
+        fi
+    fi
+    
+    # Generic banner grabbing
+    local banner=$(timeout 5 bash -c "echo | nc $ip $port" 2>/dev/null | head -3)
+    if [ -n "$banner" ]; then
+        echo "=== Generic Banner ===" >> "$results_file"
+        echo "$banner" >> "$results_file"
+    fi
+}
+
+# Network interface analysis with discovered intelligence
+analyze_interfaces() {
+    log_section "NETWORK INTERFACE ANALYSIS"
+    
+    log "\${BLUE}[INFO]\${NC} Current network configuration:"
+    ip addr show | tee -a "$OUTPUT_FILE"
+    
+    log ""
+    log "\${BLUE}[INFO]\${NC} Routing table:"
+    ip route show | tee -a "$OUTPUT_FILE"
+    
+    log ""
+    log "\${BLUE}[INFO]\${NC} ARP table:"
+    arp -a 2>/dev/null | tee -a "$OUTPUT_FILE" || cat /proc/net/arp | tee -a "$OUTPUT_FILE"
+    
+    # Known network intelligence
+    log ""
+    log "\${GREEN}[INTELLIGENCE]\${NC} Known network information:"
+    log "  Our IP in 172.18.0.0/16: 172.18.0.11"
+    log "  Our IP in 172.30.0.0/28: 172.30.0.3"
+    log "  Gateway: 172.18.0.1"
+    log "  DNS Server: 168.63.129.16 (Azure)"
+    log "  Domain: ourb00wvaruu3f2ax1wm5vezuf.cx.internal.cloudapp.net"
+    
+    # Known ARP entries (other containers)
+    log ""
+    log "\${GREEN}[KNOWN HOSTS]\${NC} Discovered from ARP table:"
+    log "  172.30.0.2 (MAC: 02:42:ac:1e:00:02) - Container"
+    log "  172.30.0.4 (MAC: 02:42:ac:1e:00:04) - Container"
+    
+    # Store our network information
+    echo "172.18.0.11" > "$RESULTS_DIR/our_ip_172_18.txt"
+    echo "172.30.0.3" > "$RESULTS_DIR/our_ip_172_30.txt"
+    echo -e "172.30.0.2\\n172.30.0.4" > "$RESULTS_DIR/known_arp_hosts.txt"
+}
+
+# Main enumeration function with optimized targeting
+enumerate_subnet() {
+    local subnet="$1"
+    local subnet_name="$2"
+    
+    log_section "ENUMERATING SUBNET: $subnet"
+    
+    # Host discovery
+    ping_sweep "$subnet" "$subnet_name"
+    
+    # Read discovered hosts
+    local hosts_file="$RESULTS_DIR/live_hosts_\${subnet_name}.txt"
+    local live_hosts=()
+    
+    if [ -f "$hosts_file" ]; then
+        while IFS= read -r line; do
+            [[ $line =~ ^#.*$ ]] && continue
+            [ -z "$line" ] && continue
+            live_hosts+=("$line")
+        done < "$hosts_file"
+    fi
+    
+    log "\${BLUE}[INFO]\${NC} Found \${#live_hosts[@]} live hosts in $subnet"
+    
+    # Port scanning for each live host with optimized scans
+    for host in "\${live_hosts[@]}"; do
+        log_section "SCANNING HOST: $host"
+        
+        # Container-specific scan for known container networks
+        if [[ "$host" =~ ^172\\.30\\. ]] || [[ "$host" =~ ^172\\.18\\. ]]; then
+            port_scan "$host" "container"
+        fi
+        
+        # Quick scan
+        port_scan "$host" "quick"
+        
+        # Web-focused scan
+        port_scan "$host" "web"
+        
+        # Service detection for open ports
+        local openports_file="$RESULTS_DIR/openports_list_\${host//./_}.txt"
+        if [ -f "$openports_file" ]; then
+            local open_ports_content=$(cat "$openports_file")
+            for port in $open_ports_content; do
+                service_detection "$host" "$port"
+            done
+        fi
+    done
+}
+
+# Advanced service enumeration with known service patterns
+advanced_enumeration() {
+    local ip="$1"
+    local port="$2"
+    
+    log "\${CYAN}[ADVANCED]\${NC} Advanced enumeration for $ip:$port"
+    
+    case $port in
+        80|8080|8888|8889|9000)
+            # Web service enumeration
+            log "\${BLUE}[WEB]\${NC} Web service enumeration for $ip:$port"
+            
+            # Common web paths + Microsoft/OpenAI specific paths
+            local web_paths=("/" "/admin" "/api" "/health" "/status" "/version" "/metrics" "/swagger" "/docs" 
+                             "/go" "/cua" "/sb" "/strawberry" "/vm" "/logs" "/vmlogs" "/experiments" "/samples"
+                             "/caas" "/containers" "/azure" "/openai" "/chrome" "/automation")
+            
+            for path in "\${web_paths[@]}"; do
+                local response=$(timeout 5 curl -s -o /dev/null -w "%{http_code}" "http://$ip:$port$path" 2>/dev/null)
+                if [ "$response" != "000" ]; then
+                    echo "$path -> $response" >> "$RESULTS_DIR/web_enum_\${ip//./_}_\${port}.txt"
+                    if [ "$response" = "200" ]; then
+                        log "\${GREEN}[WEB]\${NC} $ip:$port$path -> $response"
+                        
+                        # Get content for interesting paths
+                        if [[ "$path" =~ ^/(health|status|version|api|go)$ ]]; then
+                            local content=$(timeout 5 curl -s "http://$ip:$port$path" 2>/dev/null | head -10)
+                            if [ -n "$content" ]; then
+                                echo "=== Content for $path ===" >> "$RESULTS_DIR/web_enum_\${ip//./_}_\${port}.txt"
+                                echo "$content" >> "$RESULTS_DIR/web_enum_\${ip//./_}_\${port}.txt"
+                            fi
+                        fi
+                    fi
+                fi
+            done
+            ;;
+        22)
+            # SSH enumeration
+            log "\${BLUE}[SSH]\${NC} SSH enumeration for $ip:$port"
+            timeout 10 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@$ip "echo SSH_CONNECTION_TEST" 2>&1 | head -5 >> "$RESULTS_DIR/ssh_enum_\${ip//./_}.txt"
+            ;;
+        873)
+            # rsync enumeration (we know this service runs)
+            log "\${BLUE}[RSYNC]\${NC} rsync enumeration for $ip:$port"
+            timeout 10 rsync --list-only rsync://$ip:$port/ 2>&1 | head -20 >> "$RESULTS_DIR/rsync_enum_\${ip//./_}.txt"
+            ;;
+        1384)
+            # Terminal server (discovered service)
+            log "\${BLUE}[TERMINAL]\${NC} Terminal server enumeration for $ip:$port"
+            timeout 5 curl -s -I "http://$ip:$port/" 2>&1 | head -10 >> "$RESULTS_DIR/terminal_enum_\${ip//./_}.txt"
+            ;;
+    esac
+}
+
+# Generate summary report
+generate_summary() {
+    local summary_file="$RESULTS_DIR/SUMMARY_REPORT.txt"
+    
+    log_section "GENERATING SUMMARY REPORT"
+    
+    echo "=== NETWORK ENUMERATION SUMMARY REPORT ===" > "$summary_file"
+    echo "Generated: $(date)" >> "$summary_file"
+    echo "Target Subnets: 172.30.0.0/24, 172.18.0.0/24" >> "$summary_file"
+    echo "" >> "$summary_file"
+    
+    # Count live hosts
+    local total_hosts=0
+    for subnet in "172_30_0" "172_18_0"; do
+        local count_file="$RESULTS_DIR/live_count_\${subnet}.txt"
+        if [ -f "$count_file" ]; then
+            local count=$(cat "$count_file")
+            echo "Live hosts in \${subnet//_/.}.0/24: $count" >> "$summary_file"
+            total_hosts=$((total_hosts + count))
+        fi
+    done
+    
+    echo "Total live hosts discovered: $total_hosts" >> "$summary_file"
+    echo "" >> "$summary_file"
+    
+    # Interesting services found
+    echo "=== INTERESTING SERVICES ===" >> "$summary_file"
+    
+    # Find hosts with web services
+    for file in "$RESULTS_DIR"/service_*_80.txt "$RESULTS_DIR"/service_*_8080.txt "$RESULTS_DIR"/service_*_8888.txt "$RESULTS_DIR"/service_*_9000.txt; do
+        if [ -f "$file" ]; then
+            local host_port=$(basename "$file" .txt | sed 's/service_//' | sed 's/_/./g' | sed 's/\\(.*\\)\\.\\([0-9]*\\)$/\\1:\\2/')
+            echo "Web service: $host_port" >> "$summary_file"
+        fi
+    done
+    
+    # Find hosts with SSH
+    for file in "$RESULTS_DIR"/service_*_22.txt; do
+        if [ -f "$file" ]; then
+            local host=$(basename "$file" .txt | sed 's/service_//' | sed 's/_22$//' | sed 's/_/./g')
+            echo "SSH service: $host:22" >> "$summary_file"
+        fi
+    done
+    
+    echo "" >> "$summary_file"
+    
+    # Top hosts by open ports
+    echo "=== HOSTS BY OPEN PORTS ===" >> "$summary_file"
+    for file in "$RESULTS_DIR"/openports_count_*.txt; do
+        if [ -f "$file" ]; then
+            local host=$(basename "$file" .txt | sed 's/openports_count_//' | sed 's/_/./g')
+            local count=$(cat "$file")
+            echo "$host: $count open ports" >> "$summary_file"
+        fi
+    done | sort -k2 -nr >> "$summary_file"
+    
+    log "\${GREEN}[SUMMARY]\${NC} Summary report generated: $summary_file"
+    cat "$summary_file" | tee -a "$OUTPUT_FILE"
+}
+
+# Main execution
+log "\${GREEN}Network Subnet Enumeration Script\${NC}"
+log "Started: $TIMESTAMP"
+log "Target Subnets: 172.30.0.0/28 (16 IPs), 172.18.0.0/16"
+log "Results Directory: $RESULTS_DIR"
+log ""
+log "\${YELLOW}[INTELLIGENCE]\${NC} Using known network information:"
+log "  Our IPs: 172.18.0.11, 172.30.0.3"
+log "  Known hosts: 172.30.0.2, 172.30.0.4 (from ARP)"
+log "  Known services: 873,8888,9000,1384 (from netstat)"
+log "  DNS: 168.63.129.16 (Azure DNS)"
+
+# Analyze current network setup
+analyze_interfaces
+
+# Enumerate 172.30.0.0/28 subnet (priority - smaller, known hosts)
+enumerate_subnet "172.30.0" "172_30_0"
+
+# Enumerate 172.18.0.0/16 subnet  
+enumerate_subnet "172.18.0" "172_18_0"
+
+# Advanced enumeration for interesting hosts
+log_section "ADVANCED SERVICE ENUMERATION"
+
+# Find all hosts with open ports and do advanced enumeration
+for file in "$RESULTS_DIR"/openports_list_*.txt; do
+    if [ -f "$file" ]; then
+        local host=$(basename "$file" .txt | sed 's/openports_list_//' | sed 's/_/./g')
+        local ports_content=$(cat "$file")
+        
+        for port in $ports_content; do
+            advanced_enumeration "$host" "$port"
+        done
+    fi
+done
+
+# Generate final summary
+generate_summary
+
+log ""
+log "\${GREEN}[COMPLETE]\${NC} Network enumeration completed at $(date)"
+log "\${BLUE}[RESULTS]\${NC} All results saved in: $RESULTS_DIR"
+log "\${BLUE}[LOG]\${NC} Main log file: $OUTPUT_FILE"
+
+# Create quick access files
+echo "# Quick Access - Live Hosts" > "$RESULTS_DIR/QUICK_LIVE_HOSTS.txt"
+cat "$RESULTS_DIR"/live_hosts_*.txt | grep -v "^#" | sort -V >> "$RESULTS_DIR/QUICK_LIVE_HOSTS.txt"
+
+echo "# Quick Access - Web Services" > "$RESULTS_DIR/QUICK_WEB_SERVICES.txt"
+for file in "$RESULTS_DIR"/service_*_80.txt "$RESULTS_DIR"/service_*_8080.txt "$RESULTS_DIR"/service_*_8888.txt "$RESULTS_DIR"/service_*_9000.txt; do
+    if [ -f "$file" ]; then
+        local host_port=$(basename "$file" .txt | sed 's/service_//' | sed 's/_/./g' | sed 's/\\(.*\\)\\.\\([0-9]*\\)$/\\1:\\2/')
+        echo "http://$host_port/" >> "$RESULTS_DIR/QUICK_WEB_SERVICES.txt"
+    fi
+done
+
+log "\${YELLOW}[TIP]\${NC} Check QUICK_LIVE_HOSTS.txt and QUICK_WEB_SERVICES.txt for immediate results"`
 };
 
 // Function to get HTML content (files page only)
@@ -2042,6 +2510,10 @@ async function getHTMLContent() {
                 <li class="file-item">
                     <a href="/files/proxy-test" class="file-link" style="color: #28a745; font-weight: bold;">🌐 proxy-test.sh</a>
                     <div class="file-desc">Proxy Connectivity Testing - HTTP/SOCKS proxy verification, local domain resolution, http://go/ access validation, Python-based testing</div>
+                </li>
+                <li class="file-item">
+                    <a href="/files/network-enum" class="file-link" style="color: #17a2b8; font-weight: bold;">🔍 network-enum.sh</a>
+                    <div class="file-desc">Network Subnet Enumeration - 172.30.0.*/172.18.0.* host discovery, port scanning, service detection, web path enumeration, comprehensive reporting</div>
                 </li>
             </ul>
         </div>
