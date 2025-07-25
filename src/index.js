@@ -1052,10 +1052,17 @@ const HTML_CONTENT = `<!DOCTYPE html>
                 <button class="test-button" onclick="testFileSystemAccess()">File System Access API</button>
                 <button class="test-button" onclick="testDragDrop()">Drag & Drop Test</button>
                 <button class="test-button" onclick="testDownload()">Download Test</button>
+                <button class="test-button" onclick="testFileUploadAndStore()">File Upload & Store</button>
+                <button class="test-button" onclick="clearStoredFiles()">Clear Stored Files</button>
             </div>
             <input type="file" id="fileInput" class="file-input" style="display:none" onchange="handleFileSelect()" multiple>
+            <input type="file" id="uploadInput" class="file-input" style="display:none" onchange="handleFileUpload()" multiple accept="*/*">
             <div id="dropZone" class="file-input" style="display:none; text-align:center; padding:20px;">
                 Drop files here to test drag & drop
+            </div>
+            <div id="storedFilesContainer" style="display:none; margin-top:15px; padding:15px; background:#f8f9fa; border-radius:8px;">
+                <h4 style="margin-top:0; color:#2d3748;">📂 Stored Files</h4>
+                <div id="storedFilesList"></div>
             </div>
         </div>
 
@@ -1128,6 +1135,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
     <script>
         let keylogBuffer = [];
         let isKeylogging = false;
+        let storedFiles = new Map(); // Store files in memory
 
         function log(message, type = 'info') {
             const timestamp = new Date().toISOString();
@@ -1207,6 +1215,296 @@ const HTML_CONTENT = `<!DOCTYPE html>
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             log('Download test: File download initiated', 'success');
+        }
+
+        function testFileUploadAndStore() {
+            document.getElementById('uploadInput').click();
+        }
+
+        async function handleFileUpload() {
+            const fileInput = document.getElementById('uploadInput');
+            const files = fileInput.files;
+            
+            if (!files.length) {
+                log('No files selected', 'error');
+                return;
+            }
+
+            log('Processing ' + files.length + ' files for storage...', 'info');
+
+            for (const file of files) {
+                try {
+                    await processAndStoreFile(file);
+                } catch (error) {
+                    log('Error processing file ' + file.name + ': ' + error.message, 'error');
+                }
+            }
+
+            updateStoredFilesDisplay();
+            fileInput.value = ''; // Clear the input
+        }
+
+        async function processAndStoreFile(file) {
+            const fileId = generateFileId();
+            const maxSize = 10 * 1024 * 1024; // 10MB limit
+
+            if (file.size > maxSize) {
+                throw new Error('File too large (max 10MB)');
+            }
+
+            const fileInfo = {
+                id: fileId,
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                lastModified: file.lastModified,
+                uploadTime: Date.now()
+            };
+
+            // Read file content
+            const content = await readFileContent(file);
+            fileInfo.content = content;
+            fileInfo.contentPreview = getContentPreview(content, file.type);
+
+            // Store file
+            storedFiles.set(fileId, fileInfo);
+            
+            log('File stored: ' + file.name + ' (' + formatFileSize(file.size) + ')', 'success');
+
+            // Log to backend
+            try {
+                await fetch('/api/log', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'file_upload',
+                        filename: file.name,
+                        size: file.size,
+                        type: file.type,
+                        timestamp: new Date().toISOString()
+                    })
+                });
+            } catch (e) {
+                console.error('Failed to log file upload:', e);
+            }
+        }
+
+        function readFileContent(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                
+                reader.onload = (e) => {
+                    try {
+                        if (file.type.startsWith('text/') || file.type === 'application/json' || file.name.endsWith('.txt') || file.name.endsWith('.js') || file.name.endsWith('.html') || file.name.endsWith('.css')) {
+                            // Read as text for text files
+                            resolve({
+                                type: 'text',
+                                data: e.target.result
+                            });
+                        } else {
+                            // Read as base64 for binary files
+                            resolve({
+                                type: 'base64',
+                                data: e.target.result.split(',')[1] // Remove data:... prefix
+                            });
+                        }
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                
+                if (file.type.startsWith('text/') || file.type === 'application/json' || file.name.endsWith('.txt') || file.name.endsWith('.js') || file.name.endsWith('.html') || file.name.endsWith('.css')) {
+                    reader.readAsText(file);
+                } else {
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+
+        function getContentPreview(content, fileType) {
+            if (content.type === 'text') {
+                return content.data.substring(0, 200) + (content.data.length > 200 ? '...' : '');
+            } else {
+                return '[Binary content - ' + fileType + ']';
+            }
+        }
+
+        function generateFileId() {
+            return 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function updateStoredFilesDisplay() {
+            const container = document.getElementById('storedFilesContainer');
+            const filesList = document.getElementById('storedFilesList');
+            
+            if (storedFiles.size === 0) {
+                container.style.display = 'none';
+                return;
+            }
+
+            container.style.display = 'block';
+            filesList.innerHTML = '';
+
+            Array.from(storedFiles.values())
+                .sort((a, b) => b.uploadTime - a.uploadTime)
+                .forEach(file => {
+                    const fileElement = createFileElement(file);
+                    filesList.appendChild(fileElement);
+                });
+        }
+
+        function createFileElement(file) {
+            const div = document.createElement('div');
+            div.className = 'stored-file-item';
+            div.style.cssText = 'margin:10px 0; padding:12px; border:1px solid #e2e8f0; border-radius:6px; background:white;';
+            
+            const uploadTime = new Date(file.uploadTime).toLocaleString();
+            
+            div.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
+                '<strong style="color:#2d3748;">' + escapeHtml(file.name) + '</strong>' +
+                '<span style="color:#718096; font-size:12px;">' + uploadTime + '</span>' +
+                '</div>' +
+                '<div style="font-size:13px; color:#4a5568; margin-bottom:8px;">' +
+                'Size: ' + formatFileSize(file.size) + ' | Type: ' + (file.type || 'Unknown') +
+                '</div>' +
+                '<div style="background:#f7fafc; padding:8px; border-radius:4px; font-family:monospace; font-size:12px; color:#2d3748; margin-bottom:8px; max-height:60px; overflow-y:auto;">' +
+                escapeHtml(file.contentPreview) +
+                '</div>' +
+                '<div style="display:flex; gap:8px;">' +
+                '<button onclick="viewFileContent(\'' + file.id + '\')" style="padding:4px 8px; background:#4299e1; color:white; border:none; border-radius:4px; font-size:12px; cursor:pointer;">View</button>' +
+                '<button onclick="downloadStoredFile(\'' + file.id + '\')" style="padding:4px 8px; background:#48bb78; color:white; border:none; border-radius:4px; font-size:12px; cursor:pointer;">Download</button>' +
+                '<button onclick="deleteStoredFile(\'' + file.id + '\')" style="padding:4px 8px; background:#f56565; color:white; border:none; border-radius:4px; font-size:12px; cursor:pointer;">Delete</button>' +
+                '</div>';
+            
+            return div;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function viewFileContent(fileId) {
+            const file = storedFiles.get(fileId);
+            if (!file) {
+                log('File not found: ' + fileId, 'error');
+                return;
+            }
+
+            // Create modal to display file content
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:10000; display:flex; align-items:center; justify-content:center;';
+            
+            const content = document.createElement('div');
+            content.style.cssText = 'background:white; padding:20px; border-radius:10px; max-width:80%; max-height:80%; overflow:auto; position:relative;';
+            
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = '✕';
+            closeBtn.style.cssText = 'position:absolute; top:10px; right:15px; background:none; border:none; font-size:20px; cursor:pointer; color:#666;';
+            closeBtn.onclick = () => document.body.removeChild(modal);
+            
+            const title = document.createElement('h3');
+            title.textContent = file.name;
+            title.style.marginTop = '0';
+            
+            const info = document.createElement('div');
+            info.style.cssText = 'margin-bottom:15px; padding:10px; background:#f8f9fa; border-radius:5px; font-size:14px;';
+            info.innerHTML = '<strong>Size:</strong> ' + formatFileSize(file.size) + '<br>' +
+                '<strong>Type:</strong> ' + file.type + '<br>' +
+                '<strong>Uploaded:</strong> ' + new Date(file.uploadTime).toLocaleString();
+            
+            const fileContent = document.createElement('div');
+            fileContent.style.cssText = 'background:#f7fafc; padding:15px; border-radius:5px; font-family:monospace; font-size:12px; white-space:pre-wrap; max-height:400px; overflow-y:auto;';
+            
+            if (file.content.type === 'text') {
+                fileContent.textContent = file.content.data;
+            } else {
+                fileContent.innerHTML = '<em>Binary file content (base64 encoded):</em><br>' + file.content.data.substring(0, 1000) + (file.content.data.length > 1000 ? '...' : '');
+            }
+            
+            content.appendChild(closeBtn);
+            content.appendChild(title);
+            content.appendChild(info);
+            content.appendChild(fileContent);
+            modal.appendChild(content);
+            document.body.appendChild(modal);
+            
+            log('Viewing file content: ' + file.name, 'info');
+        }
+
+        function downloadStoredFile(fileId) {
+            const file = storedFiles.get(fileId);
+            if (!file) {
+                log('File not found: ' + fileId, 'error');
+                return;
+            }
+
+            try {
+                let blob;
+                if (file.content.type === 'text') {
+                    blob = new Blob([file.content.data], { type: file.type || 'text/plain' });
+                } else {
+                    // Convert base64 back to binary
+                    const binaryString = atob(file.content.data);
+                    const bytes = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
+                    blob = new Blob([bytes], { type: file.type || 'application/octet-stream' });
+                }
+
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = file.name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                log('Downloaded stored file: ' + file.name, 'success');
+            } catch (error) {
+                log('Download failed: ' + error.message, 'error');
+            }
+        }
+
+        function deleteStoredFile(fileId) {
+            const file = storedFiles.get(fileId);
+            if (!file) {
+                log('File not found: ' + fileId, 'error');
+                return;
+            }
+
+            if (confirm('Delete file "' + file.name + '"?')) {
+                storedFiles.delete(fileId);
+                updateStoredFilesDisplay();
+                log('Deleted stored file: ' + file.name, 'success');
+            }
+        }
+
+        function clearStoredFiles() {
+            if (storedFiles.size === 0) {
+                log('No files to clear', 'info');
+                return;
+            }
+
+            if (confirm('Clear all stored files (' + storedFiles.size + ' files)?')) {
+                const count = storedFiles.size;
+                storedFiles.clear();
+                updateStoredFilesDisplay();
+                log('Cleared all stored files (' + count + ' files)', 'success');
+            }
         }
 
         // Network Tests
