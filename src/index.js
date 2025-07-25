@@ -1814,10 +1814,18 @@ export default {
           origin: request.headers.get('Origin')
         });
         
+        // Determine proper filename with extension
+        let downloadFilename = filename;
+        if (filename === 'web-shell') {
+          downloadFilename = 'web-shell.py';
+        } else if (!filename.includes('.')) {
+          downloadFilename = filename + '.sh';
+        }
+        
         return new Response(STATIC_FILES[filename], {
           headers: {
             'Content-Type': 'application/octet-stream',
-            'Content-Disposition': 'attachment; filename="' + filename + '"',
+            'Content-Disposition': 'attachment; filename="' + downloadFilename + '"',
             'Content-Length': STATIC_FILES[filename].length.toString(),
             'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
             ...corsHeaders,
@@ -1887,6 +1895,10 @@ export default {
             <li class="file-item">
                 <a href="/files/service-probe" class="file-link">service-probe.sh</a>
                 <div class="file-desc">Port scanning and exposed service analysis</div>
+            </li>
+            <li class="file-item">
+                <a href="/files/web-shell" class="file-link" style="color: #9c27b0; font-weight: bold;">🐍 web-shell.py</a>
+                <div class="file-desc">Interactive web-based shell server - Python HTTP server with terminal interface</div>
             </li>
             <li class="file-item">
                 <a href="/files/basic-info" class="file-link">basic-info.sh</a>
