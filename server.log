@@ -356,3 +356,29 @@ No bindings found.
   
 
 
+[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mBuild failed with 1 error:[0m
+
+  [31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mUnexpected "}"[0m
+  
+      src/index.js:2879:0:
+  [37m      2879 │ [32m}[37m
+             ╵ [32m^[0m
+  
+  
+
+
+[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mBuild failed with 1 error:[0m
+
+  [31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mExpected ";" but found "' + file.id + '"[0m
+  
+      src/index.js:888:45:
+  [37m      888 │ ...ick="viewFileContent(\\'[32m' + file.id + '[37m\\')" style="padding:4p...
+            │                            [32m~~~~~~~~~~~~~~~[37m
+            ╵                            [32m;[0m
+  
+  
+
+
+⎔ Reloading local server...
+⎔ Reloading local server...
+⎔ Reloading local server...
