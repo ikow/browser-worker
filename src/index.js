@@ -530,6 +530,824 @@ echo "=== Service Probe Complete ==="
 echo "Scan finished: $(date)"`
 };
 
+// Function to get JavaScript content
+function getJavaScriptContent() {
+  return `
+let keylogBuffer = [];
+let isKeylogging = false;
+let storedFiles = new Map(); // Store files in memory
+
+function log(message, type = 'info') {
+    const timestamp = new Date().toISOString();
+    const results = document.getElementById('results');
+    const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
+    results.textContent += '[' + timestamp + '] ' + prefix + ' ' + message + '\\n';
+    results.scrollTop = results.scrollHeight;
+    
+    // Send to backend
+    fetch('/api/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timestamp, type, message })
+    }).catch(e => console.error('Failed to log to backend:', e));
+}
+
+// File System Tests
+function testFileInput() {
+    document.getElementById('fileInput').style.display = 'block';
+    document.getElementById('fileInput').click();
+}
+
+function handleFileSelect() {
+    const files = document.getElementById('fileInput').files;
+    log('File input selected ' + files.length + ' files: ' + Array.from(files).map(f => f.name).join(', '), 'success');
+}
+
+async function testFileSystemAccess() {
+    if ('showOpenFilePicker' in window) {
+        try {
+            const fileHandles = await window.showOpenFilePicker({ multiple: true });
+            log('File System Access API: Selected ' + fileHandles.length + ' files', 'success');
+            for (const handle of fileHandles) {
+                const file = await handle.getFile();
+                log('  - ' + file.name + ' (' + file.size + ' bytes)', 'info');
+            }
+        } catch (error) {
+            log('File System Access API error: ' + error.message, 'error');
+        }
+    } else {
+        log('File System Access API not supported', 'error');
+    }
+}
+
+function testDragDrop() {
+    const dropZone = document.getElementById('dropZone');
+    dropZone.style.display = 'block';
+    
+    dropZone.ondragover = (e) => {
+        e.preventDefault();
+        dropZone.style.background = '#e6fffa';
+    };
+    
+    dropZone.ondragleave = () => {
+        dropZone.style.background = '#f7fafc';
+    };
+    
+    dropZone.ondrop = (e) => {
+        e.preventDefault();
+        const files = e.dataTransfer.files;
+        log('Drag & drop: Received ' + files.length + ' files', 'success');
+        for (const file of files) {
+            log('  - ' + file.name + ' (' + file.size + ' bytes)', 'info');
+        }
+        dropZone.style.background = '#f7fafc';
+    };
+}
+
+function testDownload() {
+    const blob = new Blob(['Test file content for download'], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'test-download.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    log('Download test: File download initiated', 'success');
+}
+
+function testFileUploadAndStore() {
+    document.getElementById('uploadInput').click();
+}
+
+async function handleFileUpload() {
+    const fileInput = document.getElementById('uploadInput');
+    const files = fileInput.files;
+    
+    if (!files.length) {
+        log('No files selected', 'error');
+        return;
+    }
+
+    log('Processing ' + files.length + ' files for storage...', 'info');
+
+    for (const file of files) {
+        try {
+            await processAndStoreFile(file);
+        } catch (error) {
+            log('Error processing file ' + file.name + ': ' + error.message, 'error');
+        }
+    }
+
+    updateStoredFilesDisplay();
+    fileInput.value = ''; // Clear the input
+}
+
+async function processAndStoreFile(file) {
+    const fileId = generateFileId();
+    const maxSize = 10 * 1024 * 1024; // 10MB limit
+
+    if (file.size > maxSize) {
+        throw new Error('File too large (max 10MB)');
+    }
+
+    const fileInfo = {
+        id: fileId,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: file.lastModified,
+        uploadTime: Date.now()
+    };
+
+    // Read file content
+    const content = await readFileContent(file);
+    fileInfo.content = content;
+    fileInfo.contentPreview = getContentPreview(content, file.type);
+
+    // Store file
+    storedFiles.set(fileId, fileInfo);
+    
+    log('File stored: ' + file.name + ' (' + formatFileSize(file.size) + ')', 'success');
+
+    // Log to backend
+    try {
+        await fetch('/api/log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'file_upload',
+                filename: file.name,
+                size: file.size,
+                type: file.type,
+                timestamp: new Date().toISOString()
+            })
+        });
+    } catch (e) {
+        console.error('Failed to log file upload:', e);
+    }
+}
+
+function readFileContent(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        
+        reader.onload = (e) => {
+            try {
+                if (file.type.startsWith('text/') || file.type === 'application/json' || file.name.endsWith('.txt') || file.name.endsWith('.js') || file.name.endsWith('.html') || file.name.endsWith('.css')) {
+                    // Read as text for text files
+                    resolve({
+                        type: 'text',
+                        data: e.target.result
+                    });
+                } else {
+                    // Read as base64 for binary files
+                    resolve({
+                        type: 'base64',
+                        data: e.target.result.split(',')[1] // Remove data:... prefix
+                    });
+                }
+            } catch (error) {
+                reject(error);
+            }
+        };
+        
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        
+        if (file.type.startsWith('text/') || file.type === 'application/json' || file.name.endsWith('.txt') || file.name.endsWith('.js') || file.name.endsWith('.html') || file.name.endsWith('.css')) {
+            reader.readAsText(file);
+        } else {
+            reader.readAsDataURL(file);
+        }
+    });
+}
+
+function getContentPreview(content, fileType) {
+    if (content.type === 'text') {
+        return content.data.substring(0, 200) + (content.data.length > 200 ? '...' : '');
+    } else {
+        return '[Binary content - ' + fileType + ']';
+    }
+}
+
+function generateFileId() {
+    return 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function updateStoredFilesDisplay() {
+    const container = document.getElementById('storedFilesContainer');
+    const filesList = document.getElementById('storedFilesList');
+    
+    if (storedFiles.size === 0) {
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'block';
+    filesList.innerHTML = '';
+
+    Array.from(storedFiles.values())
+        .sort((a, b) => b.uploadTime - a.uploadTime)
+        .forEach(file => {
+            const fileElement = createFileElement(file);
+            filesList.appendChild(fileElement);
+        });
+}
+
+function createFileElement(file) {
+    const div = document.createElement('div');
+    div.className = 'stored-file-item';
+    div.style.cssText = 'margin:10px 0; padding:12px; border:1px solid #e2e8f0; border-radius:6px; background:white;';
+    
+    const uploadTime = new Date(file.uploadTime).toLocaleString();
+    
+    div.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
+        '<strong style="color:#2d3748;">' + escapeHtml(file.name) + '</strong>' +
+        '<span style="color:#718096; font-size:12px;">' + uploadTime + '</span>' +
+        '</div>' +
+        '<div style="font-size:13px; color:#4a5568; margin-bottom:8px;">' +
+        'Size: ' + formatFileSize(file.size) + ' | Type: ' + (file.type || 'Unknown') +
+        '</div>' +
+        '<div style="background:#f7fafc; padding:8px; border-radius:4px; font-family:monospace; font-size:12px; color:#2d3748; margin-bottom:8px; max-height:60px; overflow-y:auto;">' +
+        escapeHtml(file.contentPreview) +
+        '</div>' +
+        '<div style="display:flex; gap:8px;">' +
+        '<button onclick="viewFileContent(\\'' + file.id + '\\')" style="padding:4px 8px; background:#4299e1; color:white; border:none; border-radius:4px; font-size:12px; cursor:pointer;">View</button>' +
+        '<button onclick="downloadStoredFile(\\'' + file.id + '\\')" style="padding:4px 8px; background:#48bb78; color:white; border:none; border-radius:4px; font-size:12px; cursor:pointer;">Download</button>' +
+        '<button onclick="deleteStoredFile(\\'' + file.id + '\\')" style="padding:4px 8px; background:#f56565; color:white; border:none; border-radius:4px; font-size:12px; cursor:pointer;">Delete</button>' +
+        '</div>';
+    
+    return div;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function clearStoredFiles() {
+    if (storedFiles.size === 0) {
+        log('No files to clear', 'info');
+        return;
+    }
+
+    if (confirm('Clear all stored files (' + storedFiles.size + ' files)?')) {
+        const count = storedFiles.size;
+        storedFiles.clear();
+        updateStoredFilesDisplay();
+        log('Cleared all stored files (' + count + ' files)', 'success');
+    }
+}
+
+// Network Tests
+async function testFetch() {
+    try {
+        const response = await fetch('/api/external-test');
+        const data = await response.json();
+        log('Fetch API test: ' + JSON.stringify(data), 'success');
+    } catch (error) {
+        log('Fetch API error: ' + error.message, 'error');
+    }
+}
+
+async function testCrossOrigin() {
+    try {
+        const response = await fetch('https://httpbin.org/json');
+        const data = await response.json();
+        log('Cross-origin request successful', 'success');
+    } catch (error) {
+        log('Cross-origin request blocked: ' + error.message, 'error');
+    }
+}
+
+function testWebSocket() {
+    try {
+        const ws = new WebSocket('wss://echo.websocket.org');
+        ws.onopen = () => {
+            log('WebSocket connection established', 'success');
+            ws.send('Test message');
+        };
+        ws.onmessage = (event) => {
+            log('WebSocket received: ' + event.data, 'success');
+            ws.close();
+        };
+        ws.onerror = (error) => {
+            log('WebSocket error: ' + error, 'error');
+        };
+    } catch (error) {
+        log('WebSocket test error: ' + error.message, 'error');
+    }
+}
+
+async function testWebRTC() {
+    try {
+        const pc = new RTCPeerConnection();
+        const offer = await pc.createOffer();
+        log('WebRTC offer created successfully', 'success');
+        pc.close();
+    } catch (error) {
+        log('WebRTC error: ' + error.message, 'error');
+    }
+}
+
+// Device Permission Tests
+async function testCamera() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        log('Camera access granted', 'success');
+        stream.getTracks().forEach(track => track.stop());
+    } catch (error) {
+        log('Camera access denied: ' + error.message, 'error');
+    }
+}
+
+async function testMicrophone() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        log('Microphone access granted', 'success');
+        stream.getTracks().forEach(track => track.stop());
+    } catch (error) {
+        log('Microphone access denied: ' + error.message, 'error');
+    }
+}
+
+async function testGeolocation() {
+    if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                log('Geolocation: ' + position.coords.latitude + ', ' + position.coords.longitude, 'success');
+            },
+            (error) => {
+                log('Geolocation error: ' + error.message, 'error');
+            }
+        );
+    } else {
+        log('Geolocation not supported', 'error');
+    }
+}
+
+function testDeviceOrientation() {
+    if ('DeviceOrientationEvent' in window) {
+        const handler = (event) => {
+            log('Device orientation: α=' + event.alpha + ', β=' + event.beta + ', γ=' + event.gamma, 'success');
+            window.removeEventListener('deviceorientation', handler);
+        };
+        window.addEventListener('deviceorientation', handler);
+        setTimeout(() => {
+            window.removeEventListener('deviceorientation', handler);
+            log('Device orientation timeout - no data received', 'error');
+        }, 3000);
+    } else {
+        log('Device orientation not supported', 'error');
+    }
+}
+
+async function testClipboard() {
+    if ('clipboard' in navigator) {
+        try {
+            await navigator.clipboard.writeText('Test clipboard content');
+            const text = await navigator.clipboard.readText();
+            log('Clipboard access: wrote and read "' + text + '"', 'success');
+        } catch (error) {
+            log('Clipboard error: ' + error.message, 'error');
+        }
+    } else {
+        log('Clipboard API not supported', 'error');
+    }
+}
+
+async function testNotifications() {
+    if ('Notification' in window) {
+        const permission = await Notification.requestPermission();
+        log('Notification permission: ' + permission, permission === 'granted' ? 'success' : 'error');
+        if (permission === 'granted') {
+            new Notification('Test notification from permission tester');
+        }
+    } else {
+        log('Notifications not supported', 'error');
+    }
+}
+
+// Storage Tests
+function testLocalStorage() {
+    try {
+        localStorage.setItem('test', 'value');
+        const value = localStorage.getItem('test');
+        localStorage.removeItem('test');
+        log('Local storage: wrote and read "' + value + '"', 'success');
+    } catch (error) {
+        log('Local storage error: ' + error.message, 'error');
+    }
+}
+
+async function testIndexedDB() {
+    if ('indexedDB' in window) {
+        try {
+            const request = indexedDB.open('testDB', 1);
+            request.onsuccess = () => {
+                log('IndexedDB: Database opened successfully', 'success');
+                request.result.close();
+                indexedDB.deleteDatabase('testDB');
+            };
+            request.onerror = () => {
+                log('IndexedDB error: ' + request.error, 'error');
+            };
+        } catch (error) {
+            log('IndexedDB error: ' + error.message, 'error');
+        }
+    } else {
+        log('IndexedDB not supported', 'error');
+    }
+}
+
+function testCookies() {
+    try {
+        document.cookie = 'test=value; path=/';
+        const cookies = document.cookie;
+        log('Cookies: ' + cookies, 'success');
+    } catch (error) {
+        log('Cookie error: ' + error.message, 'error');
+    }
+}
+
+async function testCacheAPI() {
+    if ('caches' in window) {
+        try {
+            const cache = await caches.open('test-cache');
+            await cache.put('/test', new Response('test'));
+            const response = await cache.match('/test');
+            const text = await response.text();
+            log('Cache API: stored and retrieved "' + text + '"', 'success');
+            await caches.delete('test-cache');
+        } catch (error) {
+            log('Cache API error: ' + error.message, 'error');
+        }
+    } else {
+        log('Cache API not supported', 'error');
+    }
+}
+
+// Red Team Tests
+function testKeylogger() {
+    if (!isKeylogging) {
+        isKeylogging = true;
+        keylogBuffer = [];
+        document.addEventListener('keydown', keylogHandler);
+        log('Input monitoring started - type something to test', 'success');
+        setTimeout(() => {
+            document.removeEventListener('keydown', keylogHandler);
+            isKeylogging = false;
+            log('Input monitoring captured: ' + keylogBuffer.join(''), 'success');
+        }, 10000);
+    }
+}
+
+function keylogHandler(event) {
+    keylogBuffer.push(event.key);
+    if (keylogBuffer.length > 50) {
+        keylogBuffer.shift();
+    }
+}
+
+async function testScreenCapture() {
+    try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        log('Screen capture access granted', 'success');
+        stream.getTracks().forEach(track => track.stop());
+    } catch (error) {
+        log('Screen capture denied: ' + error.message, 'error');
+    }
+}
+
+function testCredentialHarvest() {
+    const form = document.createElement('form');
+    form.innerHTML = '<input type="text" placeholder="Username" id="testUsername">' +
+        '<input type="password" placeholder="Password" id="testPassword">' +
+        '<button type="submit">Test Submit</button>';
+    form.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border:2px solid #ccc;z-index:1000;';
+    
+    form.onsubmit = (e) => {
+        e.preventDefault();
+        const username = document.getElementById('testUsername').value;
+        const password = document.getElementById('testPassword').value;
+        log('Credential harvest test: username="' + username + '", password="' + password + '"', 'success');
+        document.body.removeChild(form);
+    };
+    
+    document.body.appendChild(form);
+    log('Credential harvest form displayed', 'info');
+}
+
+async function testDataExfiltration() {
+    const sensitiveData = {
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        language: navigator.language,
+        cookieEnabled: navigator.cookieEnabled,
+        onLine: navigator.onLine,
+        screenResolution: screen.width + 'x' + screen.height,
+        availableScreenSize: screen.availWidth + 'x' + screen.availHeight,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    };
+    
+    try {
+        const response = await fetch('/api/log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'exfiltration', data: sensitiveData })
+        });
+        log('Data exfiltration test: Sensitive data sent to server', 'success');
+    } catch (error) {
+        log('Data exfiltration failed: ' + error.message, 'error');
+    }
+}
+
+function testCSRFExtraction() {
+    const tokens = [];
+    const forms = document.querySelectorAll('form');
+    forms.forEach(form => {
+        const csrfInputs = form.querySelectorAll('input[name*="csrf"], input[name*="token"]');
+        csrfInputs.forEach(input => {
+            tokens.push({ name: input.name, value: input.value });
+        });
+    });
+    
+    const metaTags = document.querySelectorAll('meta[name*="csrf"], meta[name*="token"]');
+    metaTags.forEach(meta => {
+        tokens.push({ name: meta.name, content: meta.content });
+    });
+    
+    log('CSRF token extraction: Found ' + tokens.length + ' potential tokens', tokens.length > 0 ? 'success' : 'info');
+    tokens.forEach(token => {
+        log('  - ' + token.name + ': ' + (token.value || token.content), 'info');
+    });
+}
+
+// Script generation functions would go here...
+function generateShellScript() {
+    const scriptName = document.getElementById('scriptName').value || 'test-script.sh';
+    const scriptContent = document.getElementById('scriptContent').value;
+    
+    if (!scriptContent.trim()) {
+        log('Error: Script content cannot be empty', 'error');
+        return;
+    }
+    
+    let finalContent = scriptContent;
+    if (!finalContent.startsWith('#!')) {
+        finalContent = '#!/bin/bash\\n' + finalContent;
+    }
+    
+    const finalFilename = scriptName.endsWith('.sh') ? scriptName : scriptName + '.sh';
+    
+    // Try download methods
+    try {
+        const dataUrl = 'data:application/octet-stream;charset=utf-8,' + encodeURIComponent(finalContent);
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = finalFilename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        log('Downloaded script: ' + finalFilename, 'success');
+    } catch (error) {
+        log('Download failed: ' + error.message, 'error');
+    }
+}
+
+function loadTemplateScript() {
+    const template = \`#!/bin/bash
+# Permission Testing Script
+echo "=== System Permission Tests ==="
+echo "Current user: $(whoami)"
+echo "Current directory: $(pwd)"
+echo "Date: $(date)"
+echo "=== File System Tests ==="
+touch /tmp/test_file && echo "[OK] Can create files" || echo "[FAIL] Cannot create files"
+rm -f /tmp/test_file
+echo "=== Network Tests ==="
+ping -c 1 8.8.8.8 > /dev/null 2>&1 && echo "[OK] Network available" || echo "[FAIL] No network"
+echo "=== Test Complete ==="\`;
+    
+    document.getElementById('scriptContent').value = template;
+    document.getElementById('scriptName').value = 'permission-test.sh';
+    log('Permission test template loaded', 'success');
+}
+
+function loadNetworkTestTemplate() {
+    const template = \`#!/bin/bash
+# Network Test Template
+TARGET_IP="YOUR_IP_HERE"
+TARGET_PORT="4444"
+echo "=== Network Connectivity Test ==="
+echo "Target: $TARGET_IP:$TARGET_PORT"
+echo "Testing connectivity..."
+if command -v nc >/dev/null 2>&1; then
+    echo "Netcat available"
+else
+    echo "Netcat not available"
+fi
+echo "=== Test Complete ==="\`;
+    
+    document.getElementById('scriptContent').value = template;
+    document.getElementById('scriptName').value = 'network-test.sh';
+    log('Network test template loaded', 'success');
+}
+
+function loadSystemInfoTemplate() {
+    const template = \`#!/bin/bash
+# System Information Script
+echo "=== System Information ==="
+echo "Hostname: $(hostname)"
+echo "OS: $(uname -a)"
+echo "User: $(whoami)"
+echo "Memory: $(free -h | awk '/^Mem:/ {print $2}')"
+echo "=== Complete ==="\`;
+    
+    document.getElementById('scriptContent').value = template;
+    document.getElementById('scriptName').value = 'system-info.sh';
+    log('System info template loaded', 'success');
+}
+
+function loadAdvancedInfoTemplate() {
+    const template = \`#!/bin/bash
+# Advanced System Information
+echo "=== Advanced Information ==="
+echo "Kernel: $(uname -rv)"
+echo "Architecture: $(uname -m)"
+echo "CPU: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)"
+echo "Containers:"
+[ -f /.dockerenv ] && echo "Docker detected"
+echo "=== Complete ==="\`;
+    
+    document.getElementById('scriptContent').value = template;
+    document.getElementById('scriptName').value = 'advanced-info.sh';
+    log('Advanced info template loaded', 'success');
+}
+
+function loadServiceProbeTemplate() {
+    const template = \`#!/bin/bash
+# Service Probe Script
+echo "=== Service Probe ==="
+PORTS="22 80 443 8888 873"
+for port in $PORTS; do
+    if ss -tuln | grep -q ":$port "; then
+        echo "Port $port: OPEN"
+    else
+        echo "Port $port: CLOSED"
+    fi
+done
+echo "=== Complete ==="\`;
+    
+    document.getElementById('scriptContent').value = template;
+    document.getElementById('scriptName').value = 'service-probe.sh';
+    log('Service probe template loaded', 'success');
+}
+
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    log('Browser Permission Tester loaded successfully');
+    log('User Agent: ' + navigator.userAgent);
+});
+`;
+}
+
+// Function to get HTML content (simplified inline version)
+async function getHTMLContent() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser Permission Tester</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #333; min-height: 100vh; }
+        .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        h1 { text-align: center; color: #4a5568; margin-bottom: 10px; }
+        .subtitle { text-align: center; color: #718096; margin-bottom: 30px; font-style: italic; }
+        .category { margin: 25px 0; padding: 20px; border: 2px solid #e2e8f0; border-radius: 10px; background: #f7fafc; }
+        .category h3 { color: #2d3748; margin-top: 0; border-bottom: 2px solid #cbd5e0; padding-bottom: 10px; }
+        .test-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-top: 15px; }
+        .test-button { background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%); color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; transition: all 0.3s ease; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .test-button:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
+        .test-button:active { transform: translateY(0); }
+        .test-button.danger { background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%); }
+        .test-button.warning { background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%); }
+        .results { margin-top: 30px; padding: 20px; background: #1a202c; color: #e2e8f0; border-radius: 10px; font-family: 'Courier New', monospace; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+        .warning-banner { background: #fed7d7; border: 2px solid #fc8181; border-radius: 8px; padding: 15px; margin-bottom: 20px; color: #c53030; font-weight: bold; }
+        .file-input { margin: 10px 0; padding: 8px; border: 2px dashed #cbd5e0; border-radius: 5px; background: #f7fafc; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 Browser Permission Tester</h1>
+        <p class="subtitle">Security research tool for testing browser permissions and capabilities</p>
+        
+        <div class="warning-banner">
+            ⚠️ This tool is for defensive security research only. Use responsibly and only on systems you own or have explicit permission to test.
+        </div>
+
+        <div class="category">
+            <h3>📁 File System Access</h3>
+            <div class="test-grid">
+                <button class="test-button" onclick="testFileInput()">File Input Test</button>
+                <button class="test-button" onclick="testFileSystemAccess()">File System Access API</button>
+                <button class="test-button" onclick="testDragDrop()">Drag & Drop Test</button>
+                <button class="test-button" onclick="testDownload()">Download Test</button>
+                <button class="test-button" onclick="testFileUploadAndStore()">File Upload & Store</button>
+                <button class="test-button" onclick="clearStoredFiles()">Clear Stored Files</button>
+            </div>
+            <input type="file" id="fileInput" class="file-input" style="display:none" onchange="handleFileSelect()" multiple>
+            <input type="file" id="uploadInput" class="file-input" style="display:none" onchange="handleFileUpload()" multiple accept="*/*">
+            <div id="dropZone" class="file-input" style="display:none; text-align:center; padding:20px;">Drop files here to test drag & drop</div>
+            <div id="storedFilesContainer" style="display:none; margin-top:15px; padding:15px; background:#f8f9fa; border-radius:8px;">
+                <h4 style="margin-top:0; color:#2d3748;">📂 Stored Files</h4>
+                <div id="storedFilesList"></div>
+            </div>
+        </div>
+
+        <div class="category">
+            <h3>🌐 Network Access</h3>
+            <div class="test-grid">
+                <button class="test-button" onclick="testFetch()">Fetch API Test</button>
+                <button class="test-button" onclick="testCrossOrigin()">Cross-Origin Request</button>
+                <button class="test-button" onclick="testWebSocket()">WebSocket Test</button>
+                <button class="test-button" onclick="testWebRTC()">WebRTC Test</button>
+            </div>
+        </div>
+
+        <div class="category">
+            <h3>📱 Device Permissions</h3>
+            <div class="test-grid">
+                <button class="test-button" onclick="testCamera()">Camera Access</button>
+                <button class="test-button" onclick="testMicrophone()">Microphone Access</button>
+                <button class="test-button" onclick="testGeolocation()">Geolocation</button>
+                <button class="test-button" onclick="testDeviceOrientation()">Device Motion</button>
+                <button class="test-button" onclick="testClipboard()">Clipboard Access</button>
+                <button class="test-button" onclick="testNotifications()">Notifications</button>
+            </div>
+        </div>
+
+        <div class="category">
+            <h3>💾 Storage & Data</h3>
+            <div class="test-grid">
+                <button class="test-button" onclick="testLocalStorage()">Local Storage</button>
+                <button class="test-button" onclick="testIndexedDB()">IndexedDB</button>
+                <button class="test-button" onclick="testCookies()">Cookies</button>
+                <button class="test-button" onclick="testCacheAPI()">Cache API</button>
+            </div>
+        </div>
+
+        <div class="category">
+            <h3>🔴 Red Team Vectors</h3>
+            <div class="test-grid">
+                <button class="test-button danger" onclick="testKeylogger()">Input Monitor Test</button>
+                <button class="test-button danger" onclick="testScreenCapture()">Screen Capture</button>
+                <button class="test-button danger" onclick="testCredentialHarvest()">Credential Test</button>
+                <button class="test-button warning" onclick="testDataExfiltration()">Data Exfiltration</button>
+                <button class="test-button warning" onclick="testCSRFExtraction()">CSRF Token Extract</button>
+            </div>
+        </div>
+
+        <div class="category">
+            <h3>📜 Shell Script Generator</h3>
+            <div style="margin-bottom: 15px;">
+                <label for="scriptName" style="display: block; margin-bottom: 5px; font-weight: bold;">Script Name:</label>
+                <input type="text" id="scriptName" placeholder="test-script.sh" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label for="scriptContent" style="display: block; margin-bottom: 5px; font-weight: bold;">Script Content:</label>
+                <textarea id="scriptContent" placeholder="#!/bin/bash&#10;echo 'Hello World'&#10;# Add your commands here" style="width: 100%; height: 200px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; resize: vertical;"></textarea>
+            </div>
+            <div class="test-grid">
+                <button class="test-button" onclick="generateShellScript()">Generate & Download Script</button>
+                <button class="test-button" onclick="loadTemplateScript()">Load Permission Test Template</button>
+                <button class="test-button warning" onclick="loadNetworkTestTemplate()">Load Network Test Template</button>
+                <button class="test-button danger" onclick="loadSystemInfoTemplate()">Load System Info Template</button>
+                <button class="test-button danger" onclick="loadAdvancedInfoTemplate()">Load Advanced Info Template</button>
+                <button class="test-button danger" onclick="loadServiceProbeTemplate()">Load Service Probe Template</button>
+            </div>
+        </div>
+
+        <div id="results" class="results">Ready to test browser permissions...\\n</div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>`;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -551,9 +1369,20 @@ export default {
     };
 
     if (url.pathname === '/') {
-      return new Response(HTML_CONTENT, {
+      const htmlContent = await getHTMLContent();
+      return new Response(htmlContent, {
         headers: {
           'Content-Type': 'text/html',
+          ...corsHeaders,
+        },
+      });
+    }
+
+    if (url.pathname === '/app.js') {
+      const jsContent = getJavaScriptContent();
+      return new Response(jsContent, {
+        headers: {
+          'Content-Type': 'application/javascript',
           ...corsHeaders,
         },
       });
