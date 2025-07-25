@@ -1,4 +1,4 @@
-name = "browser-permission-tester"
+name = "browser"
 main = "src/index.js"
 compatibility_date = "2024-07-01"
 
