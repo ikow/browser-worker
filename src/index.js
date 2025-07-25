@@ -205,7 +205,7 @@ echo
 echo "=== Detailed System Information ==="
 echo "Kernel version: $(uname -rv)"
 echo "Architecture: $(uname -m)"
-echo "Operating System: $(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'"' -f2 || echo 'Unknown')"
+echo "Operating System: $(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"' || echo 'Unknown')"
 echo "Hardware: $(dmidecode -s system-product-name 2>/dev/null || echo 'N/A')"
 echo "CPU info: $(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d':' -f2 | xargs || echo 'N/A')"
 echo "CPU cores: $(nproc 2>/dev/null || echo 'N/A')"
@@ -2139,7 +2139,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
                 'echo "=== Detailed System Information ==="',
                 'echo "Kernel: $(uname -rv)"',
                 'echo "Architecture: $(uname -m)"',
-                'echo "OS: $(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d\'"\'"\'" -f2 || echo \'Unknown\')"',
+                'echo "OS: $(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d= -f2 | tr -d \'"\' || echo \'Unknown\')"',
                 'echo "CPU: $(grep -m1 \'model name\' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | xargs || echo \'N/A\')"',
                 'echo "Memory: $(free -h 2>/dev/null | awk \'/^Mem:/ {print $2}\' || echo \'N/A\')"',
                 '',
@@ -2220,7 +2220,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
                 '    if ss -tuln | grep -q ":$port "; then',
                 '        echo "[OPEN] Port $port is listening"',
                 '        ss -tulnp | grep ":$port "',
-                '        timeout 3 bash -c "echo \'\'\''\''' | nc localhost $port" 2>/dev/null | head -3',
+                '        timeout 3 bash -c "echo | nc localhost $port" 2>/dev/null | head -3',
                 '    else',
                 '        echo "[CLOSED] Port $port not accessible"',
                 '    fi',
