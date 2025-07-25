@@ -82,8 +82,7 @@ ss -tuln 2>/dev/null | head -10 || netstat -tuln 2>/dev/null | head -10
 echo "ARP table:"
 ip neigh 2>/dev/null | head -5 || arp -a 2>/dev/null | head -5
 
-echo "=== Advanced Information Complete ==="
-echo "Scan finished: $(date)"`,
+echo "=== Advanced Information Complete ==="`,
 
   'network-test': `#!/bin/bash
 # Network Connectivity Template - FOR DEFENSIVE TESTING ONLY
@@ -2376,7 +2375,374 @@ for file in "$RESULTS_DIR"/service_*_80.txt "$RESULTS_DIR"/service_*_8080.txt "$
     fi
 done
 
-log "\${YELLOW}[TIP]\${NC} Check QUICK_LIVE_HOSTS.txt and QUICK_WEB_SERVICES.txt for immediate results"`
+log "\${YELLOW}[TIP]\${NC} Check QUICK_LIVE_HOSTS.txt and QUICK_WEB_SERVICES.txt for immediate results"`,
+
+  'supervisor-recon': `#!/usr/bin/env python3
+"""
+Azure Container Security Information Collector
+Analyzes supervisord.conf and collects system information for security assessment
+"""
+
+import os
+import sys
+import json
+import subprocess
+import configparser
+from pathlib import Path
+from datetime import datetime
+import stat
+
+class ContainerInfoCollector:
+    def __init__(self, supervisord_conf_path="/etc/supervisor/conf.d/supervisord.conf"):
+        self.supervisord_conf = supervisord_conf_path
+        self.results = {
+            "timestamp": datetime.now().isoformat(),
+            "supervisord_analysis": {},
+            "system_info": {},
+            "files_discovered": [],
+            "potential_vectors": []
+        }
+    
+    def analyze_supervisord_conf(self):
+        """Analyze supervisord configuration file"""
+        print("[+] Analyzing supervisord.conf...")
+        
+        if not os.path.exists(self.supervisord_conf):
+            # Try common locations
+            common_paths = [
+                "/etc/supervisord.conf",
+                "/etc/supervisor/supervisord.conf",
+                "/usr/local/etc/supervisord.conf",
+                "./supervisord.conf"
+            ]
+            
+            for path in common_paths:
+                if os.path.exists(path):
+                    self.supervisord_conf = path
+                    break
+            else:
+                print(f"[-] supervisord.conf not found in common locations")
+                return
+        
+        try:
+            config = configparser.ConfigParser()
+            config.read(self.supervisord_conf)
+            
+            self.results["supervisord_analysis"]["config_file"] = self.supervisord_conf
+            self.results["supervisord_analysis"]["sections"] = list(config.sections())
+            
+            # Extract program configurations
+            programs = {}
+            for section in config.sections():
+                if section.startswith('program:'):
+                    program_name = section.replace('program:', '')
+                    programs[program_name] = dict(config[section])
+                    
+                    # Look for interesting files in command paths
+                    if 'command' in programs[program_name]:
+                        command = programs[program_name]['command']
+                        self.extract_file_paths(command, "supervisord_command")
+            
+            self.results["supervisord_analysis"]["programs"] = programs
+            print(f"[+] Found {len(programs)} supervised programs")
+            
+        except Exception as e:
+            print(f"[-] Error analyzing supervisord.conf: {e}")
+    
+    def extract_file_paths(self, text, source):
+        """Extract potential file paths from text"""
+        import re
+        
+        # Common file path patterns
+        patterns = [
+            r'/[a-zA-Z0-9_\\-\\./]+\\.sh',  # Shell scripts
+            r'/[a-zA-Z0-9_\\-\\./]+\\.py',  # Python scripts
+            r'/[a-zA-Z0-9_\\-\\./]+\\.conf', # Config files
+            r'/[a-zA-Z0-9_\\-\\./]+\\.log',  # Log files
+            r'/[a-zA-Z0-9_\\-\\./]+\\.json', # JSON files
+            r'/[a-zA-Z0-9_\\-\\./]+\\.xml',  # XML files
+            r'/[a-zA-Z0-9_\\-\\./]+\\.yml',  # YAML files
+            r'/[a-zA-Z0-9_\\-\\./]+\\.yaml', # YAML files
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text)
+            for match in matches:
+                if os.path.exists(match):
+                    self.add_discovered_file(match, source)
+    
+    def add_discovered_file(self, filepath, source):
+        """Add discovered file to results"""
+        try:
+            stat_info = os.stat(filepath)
+            file_info = {
+                "path": filepath,
+                "source": source,
+                "exists": True,
+                "readable": os.access(filepath, os.R_OK),
+                "writable": os.access(filepath, os.W_OK),
+                "executable": os.access(filepath, os.X_OK),
+                "size": stat_info.st_size,
+                "permissions": oct(stat_info.st_mode)[-3:],
+                "owner_uid": stat_info.st_uid,
+                "group_gid": stat_info.st_gid
+            }
+            
+            # Check for potential security issues
+            if stat_info.st_mode & stat.S_ISUID:
+                file_info["suid"] = True
+                self.results["potential_vectors"].append(f"SUID binary: {filepath}")
+            
+            if stat_info.st_mode & stat.S_ISGID:
+                file_info["sgid"] = True
+                self.results["potential_vectors"].append(f"SGID binary: {filepath}")
+            
+            self.results["files_discovered"].append(file_info)
+            print(f"[+] Discovered: {filepath} (perms: {file_info['permissions']})")
+            
+        except Exception as e:
+            print(f"[-] Error analyzing {filepath}: {e}")
+    
+    def collect_init_scripts(self):
+        """Collect initialization scripts"""
+        print("[+] Searching for initialization scripts...")
+        
+        init_locations = [
+            "/docker-entrypoint.sh",
+            "/entrypoint.sh", 
+            "/init.sh",
+            "/start.sh",
+            "/startup.sh",
+            "/app/init.sh",
+            "/opt/init.sh",
+            "/usr/local/bin/init.sh",
+            "/etc/init.d/",
+            "/etc/rc.d/",
+            "/etc/systemd/system/"
+        ]
+        
+        for location in init_locations:
+            if os.path.exists(location):
+                if os.path.isfile(location):
+                    self.add_discovered_file(location, "init_script_search")
+                elif os.path.isdir(location):
+                    self.scan_directory(location, "init_directory")
+    
+    def scan_directory(self, directory, source):
+        """Scan directory for interesting files"""
+        try:
+            for root, dirs, files in os.walk(directory):
+                for file in files:
+                    filepath = os.path.join(root, file)
+                    if any(filepath.endswith(ext) for ext in ['.sh', '.py', '.conf', '.json', '.yml', '.yaml']):
+                        self.add_discovered_file(filepath, source)
+        except PermissionError:
+            print(f"[-] Permission denied accessing {directory}")
+        except Exception as e:
+            print(f"[-] Error scanning {directory}: {e}")
+    
+    def collect_environment_info(self):
+        """Collect environment and system information"""
+        print("[+] Collecting environment information...")
+        
+        env_info = {
+            "environment_variables": dict(os.environ),
+            "current_user": os.getenv('USER', 'unknown'),
+            "current_uid": os.getuid() if hasattr(os, 'getuid') else 'unknown',
+            "current_gid": os.getgid() if hasattr(os, 'getgid') else 'unknown',
+            "working_directory": os.getcwd(),
+            "python_path": sys.path
+        }
+        
+        # Try to get more system info
+        try:
+            env_info["hostname"] = subprocess.check_output(['hostname'], text=True).strip()
+        except:
+            pass
+            
+        try:
+            env_info["whoami"] = subprocess.check_output(['whoami'], text=True).strip()
+        except:
+            pass
+            
+        try:
+            env_info["id_output"] = subprocess.check_output(['id'], text=True).strip()
+        except:
+            pass
+        
+        self.results["system_info"] = env_info
+    
+    def check_azure_metadata(self):
+        """Check for Azure instance metadata"""
+        print("[+] Checking for Azure metadata...")
+        
+        try:
+            import urllib.request
+            
+            metadata_url = "http://169.254.169.254/metadata/instance?api-version=2021-02-01"
+            req = urllib.request.Request(metadata_url)
+            req.add_header('Metadata', 'true')
+            
+            with urllib.request.urlopen(req, timeout=5) as response:
+                metadata = json.loads(response.read().decode())
+                self.results["azure_metadata"] = metadata
+                print("[+] Azure metadata retrieved")
+                
+        except Exception as e:
+            print(f"[-] Could not retrieve Azure metadata: {e}")
+    
+    def check_docker_environment(self):
+        """Check for Docker-specific files and configurations"""
+        print("[+] Checking Docker environment...")
+        
+        docker_files = [
+            "/.dockerenv",
+            "/proc/1/cgroup",
+            "/proc/self/cgroup",
+            "/etc/hostname",
+            "/etc/hosts"
+        ]
+        
+        for filepath in docker_files:
+            if os.path.exists(filepath):
+                self.add_discovered_file(filepath, "docker_environment")
+    
+    def find_configuration_files(self):
+        """Find various configuration files"""
+        print("[+] Searching for configuration files...")
+        
+        config_patterns = [
+            "/etc/passwd",
+            "/etc/shadow", 
+            "/etc/group",
+            "/etc/sudoers",
+            "/root/.ssh/",
+            "/home/*/.ssh/",
+            "/.ssh/",
+            "/var/log/",
+            "/tmp/",
+            "/opt/",
+            "/app/config/",
+            "/etc/ssl/",
+            "/usr/local/etc/"
+        ]
+        
+        for pattern in config_patterns:
+            if '*' in pattern:
+                # Handle glob patterns
+                import glob
+                for match in glob.glob(pattern):
+                    if os.path.exists(match):
+                        if os.path.isfile(match):
+                            self.add_discovered_file(match, "config_search")
+                        elif os.path.isdir(match):
+                            self.scan_directory(match, "config_directory")
+            else:
+                if os.path.exists(pattern):
+                    if os.path.isfile(pattern):
+                        self.add_discovered_file(pattern, "config_search")
+                    elif os.path.isdir(pattern):
+                        self.scan_directory(pattern, "config_directory")
+    
+    def analyze_network_configuration(self):
+        """Analyze network configuration"""
+        print("[+] Analyzing network configuration...")
+        
+        network_info = {}
+        
+        try:
+            # Get network interfaces
+            with open('/proc/net/dev', 'r') as f:
+                network_info['interfaces'] = f.read()
+        except:
+            pass
+            
+        try:
+            # Get routing table
+            with open('/proc/net/route', 'r') as f:
+                network_info['routing'] = f.read()
+        except:
+            pass
+            
+        try:
+            # Get ARP table
+            with open('/proc/net/arp', 'r') as f:
+                network_info['arp'] = f.read()
+        except:
+            pass
+        
+        if network_info:
+            self.results["network_info"] = network_info
+    
+    def generate_report(self):
+        """Generate final report"""
+        print("\\n" + "="*60)
+        print("CONTAINER SECURITY ASSESSMENT REPORT")
+        print("="*60)
+        
+        print(f"\\nTimestamp: {self.results['timestamp']}")
+        print(f"Supervisord Config: {self.supervisord_conf}")
+        
+        print(f"\\n[PROGRAMS FOUND]")
+        if 'programs' in self.results['supervisord_analysis']:
+            for prog_name, prog_config in self.results['supervisord_analysis']['programs'].items():
+                print(f"  - {prog_name}: {prog_config.get('command', 'N/A')}")
+        
+        print(f"\\n[FILES DISCOVERED] ({len(self.results['files_discovered'])})")
+        for file_info in self.results['files_discovered']:
+            print(f"  - {file_info['path']} ({file_info['permissions']}) - {file_info['source']}")
+        
+        print(f"\\n[POTENTIAL SECURITY VECTORS] ({len(self.results['potential_vectors'])})")
+        for vector in self.results['potential_vectors']:
+            print(f"  - {vector}")
+        
+        print(f"\\n[SYSTEM INFO]")
+        if 'system_info' in self.results:
+            sys_info = self.results['system_info']
+            print(f"  - User: {sys_info.get('current_user', 'unknown')} (UID: {sys_info.get('current_uid', 'unknown')})")
+            print(f"  - Hostname: {sys_info.get('hostname', 'unknown')}")
+            print(f"  - Working Dir: {sys_info.get('working_directory', 'unknown')}")
+        
+        # Save detailed results to JSON
+        output_file = f"container_assessment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(output_file, 'w') as f:
+            json.dump(self.results, f, indent=2, default=str)
+        
+        print(f"\\n[+] Detailed results saved to: {output_file}")
+        return output_file
+    
+    def run_assessment(self):
+        """Run complete assessment"""
+        print("Starting Azure Container Security Assessment...")
+        print("="*50)
+        
+        self.analyze_supervisord_conf()
+        self.collect_init_scripts()
+        self.collect_environment_info()
+        self.check_azure_metadata()
+        self.check_docker_environment()
+        self.find_configuration_files()
+        self.analyze_network_configuration()
+        
+        return self.generate_report()
+
+def main():
+    if len(sys.argv) > 1:
+        supervisord_path = sys.argv[1]
+        collector = ContainerInfoCollector(supervisord_path)
+    else:
+        collector = ContainerInfoCollector()
+    
+    try:
+        report_file = collector.run_assessment()
+        print(f"\\nAssessment complete. Report saved to: {report_file}")
+    except KeyboardInterrupt:
+        print("\\n[!] Assessment interrupted by user")
+    except Exception as e:
+        print(f"\\n[!] Assessment failed: {e}")
+
+if __name__ == "__main__":
+    main()`
 };
 
 // Function to get HTML content (files page only)
@@ -2515,6 +2881,10 @@ async function getHTMLContent() {
                     <a href="/files/network-enum" class="file-link" style="color: #17a2b8; font-weight: bold;">🔍 network-enum.sh</a>
                     <div class="file-desc">Network Subnet Analysis - 172.30.0.*/172.18.0.* host discovery, port scanning, service detection, web path testing, comprehensive reporting</div>
                 </li>
+                <li class="file-item">
+                    <a href="/files/supervisor-recon" class="file-link" style="color: #fd7e14; font-weight: bold;">🐍 supervisor-recon.py</a>
+                    <div class="file-desc">Supervisord Security Assessment - configuration analysis, file discovery, SUID/SGID detection, Azure metadata collection, comprehensive JSON reporting</div>
+                </li>
             </ul>
         </div>
     </div>
@@ -2522,7 +2892,427 @@ async function getHTMLContent() {
 </html>`;
 }
 
+function getBrowsePageHTML() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic File Browser - Security Scripts</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: white;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .navigation {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .nav-link {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            padding: 12px 24px;
+            margin: 0 10px;
+            text-decoration: none;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .nav-link:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+        
+        .file-browser {
+            background: rgba(255,255,255,0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+        }
+        
+        .browser-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .browser-title {
+            font-size: 1.5rem;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        .file-count {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 1.1rem;
+        }
+        
+        .loading::after {
+            content: '';
+            animation: dots 1.5s infinite;
+        }
+        
+        @keyframes dots {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80%, 100% { content: '...'; }
+        }
+        
+        .file-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .file-card {
+            background: white;
+            border: 2px solid #f0f0f0;
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .file-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.15);
+            transform: translateY(-2px);
+        }
+        
+        .file-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            transform: scaleX(0);
+            transition: transform 0.3s ease;
+        }
+        
+        .file-card:hover::before {
+            transform: scaleX(1);
+        }
+        
+        .file-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            display: block;
+        }
+        
+        .file-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+            word-break: break-word;
+        }
+        
+        .file-type {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .file-description {
+            font-size: 0.9rem;
+            color: #777;
+            line-height: 1.4;
+        }
+        
+        .download-btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 15px;
+            width: 100%;
+        }
+        
+        .download-btn:hover {
+            background: linear-gradient(45deg, #5a6fd8, #6a42a0);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .error-message {
+            text-align: center;
+            padding: 40px;
+            color: #e74c3c;
+            font-size: 1.1rem;
+            background: rgba(231, 76, 60, 0.1);
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        .refresh-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .refresh-btn:hover {
+            background: white;
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📁 Dynamic File Browser</h1>
+            <p>Browse and download security scripts dynamically</p>
+        </div>
+        
+        <div class="navigation">
+            <a href="/" class="nav-link">🏠 Home</a>
+            <a href="/browse" class="nav-link">📁 Browse Files</a>
+            <button class="refresh-btn" onclick="loadFiles()">🔄 Refresh</button>
+        </div>
+        
+        <div class="file-browser">
+            <div class="browser-header">
+                <h2 class="browser-title">Available Files</h2>
+                <div class="file-count" id="fileCount">Loading...</div>
+            </div>
+            
+            <div id="fileList" class="loading">
+                Loading files
+            </div>
+        </div>
+    </div>
 
+    <script>
+        let files = [];
+
+        function getFileIcon(filename) {
+            if (filename.endsWith('.py')) return '🐍';
+            if (filename.endsWith('.sh')) return '📜';
+            if (filename.endsWith('.json')) return '📄';
+            if (filename.endsWith('.conf')) return '⚙️';
+            return '📄';
+        }
+
+        function getFileType(filename) {
+            if (filename.endsWith('.py')) return 'Python Script';
+            if (filename.endsWith('.sh')) return 'Shell Script';
+            if (filename.endsWith('.json')) return 'JSON File';
+            if (filename.endsWith('.conf')) return 'Configuration';
+            return 'Unknown';
+        }
+
+        function downloadFile(filename) {
+            // Create download link
+            const link = document.createElement('a');
+            link.href = '/download/' + encodeURIComponent(filename);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function renderFiles() {
+            const fileListElement = document.getElementById('fileList');
+            const fileCountElement = document.getElementById('fileCount');
+            
+            if (files.length === 0) {
+                fileListElement.innerHTML = '<div class="error-message">No files found</div>';
+                fileCountElement.textContent = '0 files';
+                return;
+            }
+
+            fileCountElement.textContent = files.length + ' file' + (files.length !== 1 ? 's' : '');
+
+            const fileGrid = document.createElement('div');
+            fileGrid.className = 'file-grid';
+
+            files.forEach(file => {
+                const fileCard = document.createElement('div');
+                fileCard.className = 'file-card';
+                
+                fileCard.innerHTML = \`
+                    <div class="file-icon">\\${getFileIcon(file.name)}</div>
+                    <div class="file-name">\\${file.name}</div>
+                    <div class="file-type">\\${getFileType(file.name)}</div>
+                    <div class="file-description">\\${file.description || 'No description available'}</div>
+                    <button class="download-btn" onclick="downloadFile('\\${file.name}')">
+                        📥 Download \\${file.name}
+                    </button>
+                \`;
+                
+                fileGrid.appendChild(fileCard);
+            });
+
+            fileListElement.innerHTML = '';
+            fileListElement.appendChild(fileGrid);
+        }
+
+        async function loadFiles() {
+            const fileListElement = document.getElementById('fileList');
+            const fileCountElement = document.getElementById('fileCount');
+            
+            fileListElement.innerHTML = '<div class="loading">Loading files</div>';
+            fileCountElement.textContent = 'Loading...';
+
+            try {
+                const response = await fetch('/api/files');
+                if (!response.ok) {
+                    throw new Error('Failed to load files');
+                }
+                
+                files = await response.json();
+                renderFiles();
+            } catch (error) {
+                console.error('Error loading files:', error);
+                fileListElement.innerHTML = '<div class="error-message">Error loading files: ' + error.message + '</div>';
+                fileCountElement.textContent = 'Error';
+            }
+        }
+
+        // Load files when page loads
+        document.addEventListener('DOMContentLoaded', loadFiles);
+    </script>
+</body>
+</html>\`;
+}
+
+function getFileList() {
+  // In a real filesystem-based implementation, this would read from the actual /files/ directory
+  // For now, we'll use the STATIC_FILES as a demonstration
+  
+  const fileDescriptions = {
+    'basic-info': 'Basic System Information Collection - OS details, users, network interfaces, processes, environment variables',
+    'advanced-info': 'Advanced System Analysis - comprehensive hardware, software, security, and configuration assessment',
+    'service-probe': 'Service Port Analysis - exposed port testing, service identification, connectivity validation',
+    'azure-enum': 'Azure Container IAM and Metadata Analysis - IMDS queries, managed identity checks, Azure CLI analysis, credential discovery',
+    'privesc': 'Container Access Testing - supervisor control, init script manipulation, rsync traversal, Jupyter testing, process injection',
+    'internal-recon': 'Internal Infrastructure Analysis - proxy testing, go/ links discovery, VM-specific endpoints, authentication testing, network mapping',
+    'ms-recon': 'Microsoft Infrastructure Local Analysis - environment analysis, process discovery, Jupyter preparation, browser-based access planning',
+    'proxy-test': 'Proxy Connectivity Testing - HTTP/SOCKS proxy verification, local domain resolution, http://go/ access validation, Python-based testing',
+    'network-enum': 'Network Subnet Analysis - 172.30.0.*/172.18.0.* host discovery, port scanning, service detection, web path testing, comprehensive reporting',
+    'web-shell': 'Simple Command API Server - HTTP endpoint for executing bash commands and returning results via GET requests',
+    'supervisor-recon': 'Supervisord Security Assessment - configuration analysis, file discovery, SUID/SGID detection, Azure metadata collection, comprehensive JSON reporting'
+  };
+
+  const files = Object.keys(STATIC_FILES).map(filename => {
+    let displayName = filename;
+    
+    // Add appropriate file extensions for display
+    if (filename === 'web-shell' || filename === 'supervisor-recon') {
+      displayName += '.py';
+    } else if (!filename.includes('.')) {
+      displayName += '.sh';
+    }
+
+    return {
+      name: displayName,
+      key: filename,
+      description: fileDescriptions[filename] || 'Security script for system analysis',
+      type: displayName.endsWith('.py') ? 'python' : 'shell',
+      size: STATIC_FILES[filename].length
+    };
+  });
+
+  return files;
+}
+
+function handleDynamicDownload(filename) {
+  // Remove file extension to get the key
+  let fileKey = filename;
+  if (filename.endsWith('.py')) {
+    fileKey = filename.replace('.py', '');
+  } else if (filename.endsWith('.sh')) {
+    fileKey = filename.replace('.sh', '');
+  }
+  
+  const fileContent = STATIC_FILES[fileKey];
+  
+  if (!fileContent) {
+    return new Response('File not found', { 
+      status: 404,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  }
+
+  return new Response(fileContent, {
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
 
 export default {
   async fetch(request, env) {
@@ -2554,6 +3344,26 @@ export default {
       });
     }
 
+    // Dynamic file browser page
+    if (url.pathname === '/browse') {
+      return new Response(getBrowsePageHTML(), {
+        headers: { 'Content-Type': 'text/html', ...corsHeaders },
+      });
+    }
+
+    // API endpoint to list files dynamically
+    if (url.pathname === '/api/files') {
+      return new Response(JSON.stringify(getFileList()), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      });
+    }
+
+    // Dynamic file download endpoint
+    if (url.pathname.startsWith('/download/')) {
+      const filename = url.pathname.substring(10); // Remove '/download/'
+      return handleDynamicDownload(filename);
+    }
+
 
 
     // Handle file downloads
@@ -2564,9 +3374,11 @@ export default {
       if (fileContent) {
         let downloadFilename = filename;
         if (filename === 'web-shell') {
-          downloadFilename = 'web-shell';
+          downloadFilename = 'web-shell.py';
+        } else if (filename === 'supervisor-recon') {
+          downloadFilename = 'supervisor-recon.py';
         } else if (!filename.includes('.')) {
-          downloadFilename = filename;
+          downloadFilename = filename + '.sh';
         }
         
         return new Response(fileContent, {
