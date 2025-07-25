@@ -1463,7 +1463,452 @@ Security Considerations:
 - Microsoft internal network access
 EOF
 
-log "\${BLUE}[INFO]\${NC} Quick reference saved to: /tmp/recon_reference.txt"`
+log "\${BLUE}[INFO]\${NC} Quick reference saved to: /tmp/recon_reference.txt"`,
+
+  'proxy-test': `#!/bin/bash
+
+# Proxy Connectivity Test Script
+# Tests basic proxy functionality and http://go/ access only
+
+OUTPUT_FILE="proxy_test_$(date +%Y%m%d_%H%M%S).log"
+TIMESTAMP=$(date)
+
+# Colors
+RED='\\033[0;31m'
+GREEN='\\033[0;32m'
+YELLOW='\\033[1;33m'
+BLUE='\\033[0;34m'
+NC='\\033[0m'
+
+log() {
+    echo -e "$1" | tee -a "$OUTPUT_FILE"
+}
+
+log_section() {
+    echo "" | tee -a "$OUTPUT_FILE"
+    echo "========================================" | tee -a "$OUTPUT_FILE"
+    echo "$1" | tee -a "$OUTPUT_FILE"
+    echo "========================================" | tee -a "$OUTPUT_FILE"
+}
+
+test_proxy() {
+    local proxy_type="$1"
+    local proxy_url="$2"
+    local target_url="$3"
+    local description="$4"
+    
+    log "\${BLUE}[TEST]\${NC} $description"
+    log "\${YELLOW}Proxy:\${NC} $proxy_url"
+    log "\${YELLOW}Target:\${NC} $target_url"
+    
+    case $proxy_type in
+        "http")
+            echo "Using HTTP proxy..." | tee -a "$OUTPUT_FILE"
+            timeout 10 curl -s --proxy "$proxy_url" "$target_url" 2>&1 | head -10 | tee -a "$OUTPUT_FILE"
+            ;;
+        "socks5")
+            echo "Using SOCKS5 proxy..." | tee -a "$OUTPUT_FILE"
+            timeout 10 curl -s --socks5 "$proxy_url" "$target_url" 2>&1 | head -10 | tee -a "$OUTPUT_FILE"
+            ;;
+        "socks4")
+            echo "Using SOCKS4 proxy..." | tee -a "$OUTPUT_FILE"
+            timeout 10 curl -s --socks4 "$proxy_url" "$target_url" 2>&1 | head -10 | tee -a "$OUTPUT_FILE"
+            ;;
+    esac
+    
+    echo "" | tee -a "$OUTPUT_FILE"
+}
+
+test_network_connectivity() {
+    local host="$1"
+    local port="$2"
+    local description="$3"
+    
+    log "\${BLUE}[NETWORK]\${NC} $description"
+    
+    # Test with nc (netcat)
+    if command -v nc >/dev/null 2>&1; then
+        echo "Testing with netcat..." | tee -a "$OUTPUT_FILE"
+        timeout 5 nc -zv "$host" "$port" 2>&1 | tee -a "$OUTPUT_FILE"
+    fi
+    
+    # Test with telnet
+    if command -v telnet >/dev/null 2>&1; then
+        echo "Testing with telnet..." | tee -a "$OUTPUT_FILE"
+        timeout 5 echo "quit" | telnet "$host" "$port" 2>&1 | head -5 | tee -a "$OUTPUT_FILE"
+    fi
+    
+    # Test with /dev/tcp
+    echo "Testing with /dev/tcp..." | tee -a "$OUTPUT_FILE"
+    timeout 5 bash -c "echo >/dev/tcp/$host/$port" 2>&1 && echo "Connection successful" | tee -a "$OUTPUT_FILE" || echo "Connection failed" | tee -a "$OUTPUT_FILE"
+    
+    echo "" | tee -a "$OUTPUT_FILE"
+}
+
+log "\${GREEN}Proxy Connectivity Test\${NC}"
+log "Started: $TIMESTAMP"
+log "Focus: Testing proxy access to http://go/ only"
+
+# Extract proxy configuration from environment
+log_section "PROXY CONFIGURATION ANALYSIS"
+
+log "\${BLUE}[INFO]\${NC} Current proxy environment variables:"
+env | grep -E "(PROXY|proxy)" | tee -a "$OUTPUT_FILE"
+
+# Discovered proxy endpoints
+HTTP_PROXY="proxy.local:8889"
+SOCKS_PROXY="proxy.local:8888"
+TARGET_URL="http://go/"
+
+log_section "LOCAL DOMAIN DISCOVERY AND RESOLUTION"
+
+# Discovered .local domains from environment variables and logs
+LOCAL_DOMAINS=(
+    "proxy.local"
+    "chrome.local"
+    "terminal.local"
+    "apitoolbackend.local"
+)
+
+resolve_domain() {
+    local domain="$1"
+    local description="$2"
+    
+    log "\${BLUE}[DNS]\${NC} $description: $domain"
+    
+    # Try nslookup
+    echo "--- nslookup ---" | tee -a "$OUTPUT_FILE"
+    nslookup "$domain" 2>&1 | tee -a "$OUTPUT_FILE"
+    
+    # Try dig if available
+    if command -v dig >/dev/null 2>&1; then
+        echo "--- dig ---" | tee -a "$OUTPUT_FILE"
+        dig "$domain" +short 2>&1 | tee -a "$OUTPUT_FILE"
+    fi
+    
+    # Try host if available
+    if command -v host >/dev/null 2>&1; then
+        echo "--- host ---" | tee -a "$OUTPUT_FILE"
+        host "$domain" 2>&1 | tee -a "$OUTPUT_FILE"
+    fi
+    
+    # Try getent
+    echo "--- getent ---" | tee -a "$OUTPUT_FILE"
+    getent hosts "$domain" 2>&1 | tee -a "$OUTPUT_FILE"
+    
+    # Extract IP if found
+    local ip=$(nslookup "$domain" 2>/dev/null | grep -A1 "Name:" | grep "Address:" | awk '{print $2}' | head -1)
+    if [ -n "$ip" ]; then
+        log "\${GREEN}[RESOLVED]\${NC} $domain -> $ip"
+        echo "$domain:$ip" >> /tmp/local_domain_ips.txt
+    else
+        log "\${RED}[FAILED]\${NC} Could not resolve $domain"
+    fi
+    
+    echo "" | tee -a "$OUTPUT_FILE"
+}
+
+# Create file to store domain->IP mappings
+echo "# Local Domain IP Mappings" > /tmp/local_domain_ips.txt
+echo "# Generated: $(date)" >> /tmp/local_domain_ips.txt
+
+# Resolve all discovered local domains
+for domain in "\${LOCAL_DOMAINS[@]}"; do
+    resolve_domain "$domain" "Resolving local domain"
+done
+
+# Also test some common internal domains
+ADDITIONAL_DOMAINS=(
+    "go"
+    "moma"
+    "buganizer"
+    "critique"
+    "pantheon"
+)
+
+for domain in "\${ADDITIONAL_DOMAINS[@]}"; do
+    resolve_domain "$domain" "Resolving potential internal domain"
+done
+
+log_section "NETWORK CONNECTIVITY TESTS"
+
+# Test basic network connectivity to proxy endpoints
+test_network_connectivity "proxy.local" "8889" "HTTP Proxy port connectivity"
+test_network_connectivity "proxy.local" "8888" "SOCKS Proxy port connectivity"
+
+# Test connectivity to other discovered local domains
+for domain in "\${LOCAL_DOMAINS[@]}"; do
+    if [ "$domain" != "proxy.local" ]; then
+        # Try common ports
+        for port in 80 443 8080 8443 9000; do
+            test_network_connectivity "$domain" "$port" "$domain port $port connectivity"
+        done
+    fi
+done
+
+# Test connectivity to resolved local domain IPs
+log_section "LOCAL DOMAIN IP CONNECTIVITY"
+
+if [ -f /tmp/local_domain_ips.txt ]; then
+    log "\${BLUE}[INFO]\${NC} Testing connectivity to resolved local domain IPs"
+    
+    while IFS=':' read -r domain ip; do
+        # Skip comments
+        [[ $domain =~ ^#.*$ ]] && continue
+        [ -z "$domain" ] && continue
+        
+        log "\${BLUE}[TEST]\${NC} Testing $domain ($ip)"
+        
+        # Test common ports on the resolved IP
+        for port in 80 443 8080 8443 8888 8889 9000; do
+            timeout 3 bash -c "echo >/dev/tcp/$ip/$port" 2>&1 && \\
+                echo "  ✓ $ip:$port ($domain) - OPEN" | tee -a "$OUTPUT_FILE" || \\
+                echo "  ✗ $ip:$port ($domain) - CLOSED" | tee -a "$OUTPUT_FILE"
+        done
+        echo "" | tee -a "$OUTPUT_FILE"
+        
+    done < /tmp/local_domain_ips.txt
+fi
+
+log_section "HTTP PROXY TESTS"
+
+# Test HTTP proxy with different methods
+test_proxy "http" "$HTTP_PROXY" "$TARGET_URL" "HTTP proxy to http://go/"
+
+# Test with explicit HTTP proxy environment
+log "\${BLUE}[TEST]\${NC} HTTP proxy with environment variables"
+echo "Setting HTTP_PROXY environment..." | tee -a "$OUTPUT_FILE"
+export HTTP_PROXY="http://$HTTP_PROXY"
+export HTTPS_PROXY="http://$HTTP_PROXY"
+timeout 10 curl -s "$TARGET_URL" 2>&1 | head -10 | tee -a "$OUTPUT_FILE"
+echo "" | tee -a "$OUTPUT_FILE"
+
+log_section "SOCKS PROXY TESTS"
+
+# Test SOCKS5 proxy
+test_proxy "socks5" "$SOCKS_PROXY" "$TARGET_URL" "SOCKS5 proxy to http://go/"
+
+# Test SOCKS4 proxy (fallback)
+test_proxy "socks4" "$SOCKS_PROXY" "$TARGET_URL" "SOCKS4 proxy to http://go/"
+
+log_section "ALTERNATIVE CONNECTION METHODS"
+
+# Test with wget if available
+if command -v wget >/dev/null 2>&1; then
+    log "\${BLUE}[TEST]\${NC} wget via HTTP proxy"
+    timeout 10 wget --proxy=on --http-proxy="$HTTP_PROXY" -O - "$TARGET_URL" 2>&1 | head -10 | tee -a "$OUTPUT_FILE"
+    echo "" | tee -a "$OUTPUT_FILE"
+fi
+
+# Test with different curl options
+log "\${BLUE}[TEST]\${NC} curl with verbose output (HTTP proxy)"
+timeout 10 curl -v --proxy "http://$HTTP_PROXY" "$TARGET_URL" 2>&1 | head -20 | tee -a "$OUTPUT_FILE"
+echo "" | tee -a "$OUTPUT_FILE"
+
+log "\${BLUE}[TEST]\${NC} curl with verbose output (SOCKS5 proxy)"
+timeout 10 curl -v --socks5 "$SOCKS_PROXY" "$TARGET_URL" 2>&1 | head -20 | tee -a "$OUTPUT_FILE"
+echo "" | tee -a "$OUTPUT_FILE"
+
+log_section "PROXY AUTHENTICATION TESTS"
+
+# Test if proxy requires authentication
+log "\${BLUE}[TEST]\${NC} Testing proxy authentication requirements"
+
+# Try with common proxy auth methods
+for auth in "proxy.local:8889" "proxy:proxy@proxy.local:8889" "admin:admin@proxy.local:8889"; do
+    log "\${BLUE}[AUTH]\${NC} Testing with: $auth"
+    timeout 10 curl -s --proxy "http://$auth" "$TARGET_URL" 2>&1 | head -5 | tee -a "$OUTPUT_FILE"
+    echo "" | tee -a "$OUTPUT_FILE"
+done
+
+log_section "DIRECT CONNECTION ATTEMPTS"
+
+# Test direct connection to 'go' (should fail but good to verify)
+log "\${BLUE}[TEST]\${NC} Direct connection to 'go' (should fail)"
+timeout 10 curl -s "http://go/" 2>&1 | head -5 | tee -a "$OUTPUT_FILE"
+echo "" | tee -a "$OUTPUT_FILE"
+
+# Test connection to proxy endpoints directly
+log "\${BLUE}[TEST]\${NC} Direct connection to proxy.local:8889"
+timeout 10 curl -s "http://proxy.local:8889/" 2>&1 | head -5 | tee -a "$OUTPUT_FILE"
+echo "" | tee -a "$OUTPUT_FILE"
+
+# Test access to other local domains through proxy
+log_section "LOCAL DOMAIN PROXY ACCESS TESTS"
+
+# Test discovered local domains through proxy
+LOCAL_TEST_URLS=(
+    "http://chrome.local/"
+    "http://terminal.local/"
+    "http://apitoolbackend.local/"
+    "http://proxy.local:8889/"
+    "http://proxy.local:8888/"
+)
+
+for url in "\${LOCAL_TEST_URLS[@]}"; do
+    log "\${BLUE}[TEST]\${NC} Testing local domain access: $url"
+    
+    # Test via HTTP proxy
+    echo "Via HTTP proxy:" | tee -a "$OUTPUT_FILE"
+    timeout 10 curl -s --proxy "http://$HTTP_PROXY" "$url" 2>&1 | head -10 | tee -a "$OUTPUT_FILE"
+    
+    # Test via SOCKS proxy
+    echo "Via SOCKS proxy:" | tee -a "$OUTPUT_FILE"
+    timeout 10 curl -s --socks5 "$SOCKS_PROXY" "$url" 2>&1 | head -10 | tee -a "$OUTPUT_FILE"
+    
+    echo "" | tee -a "$OUTPUT_FILE"
+done
+
+log_section "PYTHON-BASED PROXY TEST"
+
+# Create Python test script for more detailed proxy testing
+cat > /tmp/proxy_test.py << 'EOF'
+import requests
+import socket
+import sys
+from urllib.parse import urlparse
+
+print("=== Python Proxy Connectivity Test ===")
+
+# Proxy configurations
+proxies_http = {
+    'http': 'http://proxy.local:8889',
+    'https': 'http://proxy.local:8889'
+}
+
+proxies_socks = {
+    'http': 'socks5://proxy.local:8888',
+    'https': 'socks5://proxy.local:8888'
+}
+
+# Test URLs including local domains
+test_urls = [
+    'http://go/',
+    'http://chrome.local/',
+    'http://terminal.local/',
+    'http://apitoolbackend.local/',
+    'http://proxy.local:8889/',
+]
+
+print(f"Testing {len(test_urls)} URLs through proxies")
+
+for target_url in test_urls:
+    print(f"\\n=== Testing: {target_url} ===")
+    
+    # Test HTTP proxy
+    print("1. HTTP proxy test:")
+    try:
+        response = requests.get(target_url, proxies=proxies_http, timeout=10)
+        print(f"   Status Code: {response.status_code}")
+        print(f"   Headers: {dict(list(response.headers.items())[:5])}")  # First 5 headers
+        print(f"   Content Length: {len(response.text)}")
+        if response.text:
+            print(f"   Content Preview: {response.text[:200]}...")
+    except requests.exceptions.ProxyError as e:
+        print(f"   Proxy Error: {e}")
+    except requests.exceptions.ConnectionError as e:
+        print(f"   Connection Error: {e}")
+    except requests.exceptions.Timeout as e:
+        print(f"   Timeout Error: {e}")
+    except Exception as e:
+        print(f"   Other Error: {e}")
+
+    # Test SOCKS proxy (requires PySocks)
+    print("2. SOCKS proxy test:")
+    try:
+        response = requests.get(target_url, proxies=proxies_socks, timeout=10)
+        print(f"   Status Code: {response.status_code}")
+        print(f"   Headers: {dict(list(response.headers.items())[:5])}")  # First 5 headers
+        print(f"   Content Length: {len(response.text)}")
+        if response.text:
+            print(f"   Content Preview: {response.text[:200]}...")
+    except Exception as e:
+        print(f"   Error: {e}")
+
+# Test basic socket connectivity to local domains
+print("\\n=== Socket Connectivity Test ===")
+local_endpoints = [
+    ('proxy.local', 8889),
+    ('proxy.local', 8888),
+    ('chrome.local', 80),
+    ('terminal.local', 80),
+    ('apitoolbackend.local', 80),
+    ('apitoolbackend.local', 9000),
+]
+
+for host, port in local_endpoints:
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        result = sock.connect_ex((host, port))
+        if result == 0:
+            print(f"   {host}:{port} - REACHABLE")
+        else:
+            print(f"   {host}:{port} - UNREACHABLE (error: {result})")
+        sock.close()
+    except Exception as e:
+        print(f"   {host}:{port} - ERROR: {e}")
+
+# Test DNS resolution for local domains
+print("\\n=== DNS Resolution Test ===")
+local_domains = ['proxy.local', 'chrome.local', 'terminal.local', 'apitoolbackend.local', 'go']
+
+for domain in local_domains:
+    try:
+        ip = socket.gethostbyname(domain)
+        print(f"   {domain} -> {ip}")
+    except Exception as e:
+        print(f"   {domain} -> FAILED: {e}")
+
+print("\\n=== Test Complete ===")
+EOF
+
+log "\${BLUE}[TEST]\${NC} Running Python proxy test"
+python3 /tmp/proxy_test.py 2>&1 | tee -a "$OUTPUT_FILE"
+
+log_section "TEST SUMMARY"
+
+log "\${BLUE}[INFO]\${NC} Proxy connectivity test completed at $(date)"
+log "\${BLUE}[INFO]\${NC} Results logged to: $OUTPUT_FILE"
+
+# Analyze results
+SUCCESS_INDICATORS=("200" "HTTP/1.1" "Content-Length" "text/html")
+ERROR_INDICATORS=("Connection refused" "timeout" "error" "failed" "forbidden")
+
+log ""
+log "\${GREEN}[ANALYSIS]\${NC} Result Analysis:"
+
+for indicator in "\${SUCCESS_INDICATORS[@]}"; do
+    count=$(grep -ci "$indicator" "$OUTPUT_FILE" 2>/dev/null || echo "0")
+    if [ "$count" -gt 0 ]; then
+        log "  ✓ Found $count instances of '$indicator' - potential success"
+    fi
+done
+
+for indicator in "\${ERROR_INDICATORS[@]}"; do
+    count=$(grep -ci "$indicator" "$OUTPUT_FILE" 2>/dev/null || echo "0")
+    if [ "$count" -gt 0 ]; then
+        log "  ✗ Found $count instances of '$indicator' - potential failure"
+    fi
+done
+
+log ""
+log "\${BLUE}[NEXT STEPS]\${NC}"
+log "1. Review the log file for successful proxy connections"
+log "2. If http://go/ is accessible, proceed with sub-URI enumeration"
+log "3. If connection fails, investigate proxy authentication or network restrictions"
+log "4. Consider using Jupyter notebook for browser-based proxy testing"
+
+# Create a simple status report
+if grep -q "200\\|HTTP/1.1 200\\|Content-Length" "$OUTPUT_FILE" 2>/dev/null; then
+    echo "STATUS: PROXY CONNECTION SUCCESSFUL" > /tmp/proxy_status.txt
+    log "\${GREEN}[SUCCESS]\${NC} Proxy connection appears to be working!"
+else
+    echo "STATUS: PROXY CONNECTION FAILED" > /tmp/proxy_status.txt
+    log "\${RED}[FAILURE]\${NC} No successful proxy connections detected"
+fi
+
+log "\${BLUE}[INFO]\${NC} Status saved to: /tmp/proxy_status.txt"`
 };
 
 // Function to get HTML content (files page only)
@@ -1593,6 +2038,10 @@ async function getHTMLContent() {
                 <li class="file-item">
                     <a href="/files/ms-recon" class="file-link" style="color: #00bcf2; font-weight: bold;">🔍 ms-recon.sh</a>
                     <div class="file-desc">Microsoft Infrastructure Local Reconnaissance - environment analysis, process enumeration, Jupyter preparation, browser-based access planning</div>
+                </li>
+                <li class="file-item">
+                    <a href="/files/proxy-test" class="file-link" style="color: #28a745; font-weight: bold;">🌐 proxy-test.sh</a>
+                    <div class="file-desc">Proxy Connectivity Testing - HTTP/SOCKS proxy verification, local domain resolution, http://go/ access validation, Python-based testing</div>
                 </li>
             </ul>
         </div>
