@@ -530,202 +530,36 @@ echo "=== Service Probe Complete ==="
 echo "Scan finished: $(date)"`,
 
   'web-shell': `#!/usr/bin/env python3
-# Web-based Interactive Shell Server
+# Simple Command API Server
 # FOR DEFENSIVE SECURITY TESTING ONLY
-# Creates a web interface for executing bash commands
 
 import http.server
 import socketserver
-import urllib.parse
 import subprocess
 import json
 import os
-import sys
-from datetime import datetime
 
-class WebShellHandler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        """Serve the main web interface"""
-        if self.path == '/' or self.path == '/shell':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            
-            html_content = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Shell Interface</title>
-    <style>
-        body { font-family: 'Courier New', monospace; margin: 0; padding: 20px; background: #1a1a1a; color: #00ff00; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .header { text-align: center; color: #ff6b6b; margin-bottom: 20px; }
-        .terminal { background: #000; border: 2px solid #333; border-radius: 5px; padding: 15px; min-height: 400px; margin-bottom: 20px; }
-        .output { white-space: pre-wrap; font-size: 14px; line-height: 1.4; margin-bottom: 10px; max-height: 350px; overflow-y: auto; }
-        .input-area { display: flex; gap: 10px; align-items: center; }
-        .prompt { color: #ffff00; font-weight: bold; }
-        #command { background: #222; border: 1px solid #555; color: #00ff00; padding: 8px; font-family: inherit; flex: 1; font-size: 14px; }
-        #command:focus { outline: none; border-color: #00ff00; }
-        .execute-btn { background: #007acc; color: white; border: none; padding: 8px 15px; cursor: pointer; border-radius: 3px; }
-        .execute-btn:hover { background: #005a9e; }
-        .warning { background: #ff4444; color: white; padding: 10px; border-radius: 5px; margin-bottom: 20px; text-align: center; }
-        .info { background: #333; padding: 10px; border-radius: 5px; margin-bottom: 15px; }
-        .clear-btn { background: #666; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 3px; float: right; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>🖥️ Web Shell Interface</h1>
-            <p>Interactive Bash Shell via Web Browser</p>
-        </div>
-        
-        <div class="warning">
-            ⚠️ WARNING: This tool is for authorized testing only. Use responsibly!
-        </div>
-        
-        <div class="info">
-            <strong>Server Info:</strong> Python Web Shell | <strong>Current Directory:</strong> <span id="currentDir">Loading...</span>
-            <button class="clear-btn" onclick="clearOutput()">Clear Output</button>
-        </div>
-        
-        <div class="terminal">
-            <div class="output" id="output">Welcome to Web Shell Interface\\nType commands below to execute on the server.\\n\\n</div>
-            <div class="input-area">
-                <span class="prompt">$</span>
-                <input type="text" id="command" placeholder="Enter bash command..." autocomplete="off" onkeypress="handleKeyPress(event)">
-                <button class="execute-btn" onclick="executeCommand()">Execute</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        let commandHistory = [];
-        let historyIndex = -1;
-        
-        // Load current directory on page load
-        window.onload = function() {
-            executeCommand('pwd', false);
-        };
-        
-        function handleKeyPress(event) {
-            if (event.key === 'Enter') {
-                executeCommand();
-            } else if (event.key === 'ArrowUp') {
-                event.preventDefault();
-                if (historyIndex < commandHistory.length - 1) {
-                    historyIndex++;
-                    document.getElementById('command').value = commandHistory[commandHistory.length - 1 - historyIndex] || '';
-                }
-            } else if (event.key === 'ArrowDown') {
-                event.preventDefault();
-                if (historyIndex > 0) {
-                    historyIndex--;
-                    document.getElementById('command').value = commandHistory[commandHistory.length - 1 - historyIndex] || '';
-                } else if (historyIndex === 0) {
-                    historyIndex = -1;
-                    document.getElementById('command').value = '';
-                }
-            }
-        }
-        
-        function executeCommand(cmd = null, addToHistory = true) {
-            const commandInput = document.getElementById('command');
-            const command = cmd || commandInput.value.trim();
-            
-            if (!command) return;
-            
-            if (addToHistory) {
-                commandHistory.push(command);
-                historyIndex = -1;
-                commandInput.value = '';
-                
-                // Add command to output
-                addToOutput('$ ' + command, '#ffff00');
-            }
-            
-            // Send command to server
-            fetch('/execute', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: command })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (command === 'pwd' && !addToHistory) {
-                    document.getElementById('currentDir').textContent = data.output.trim();
-                } else {
-                    addToOutput(data.output, data.success ? '#00ff00' : '#ff4444');
-                }
-                
-                if (data.error) {
-                    addToOutput('Error: ' + data.error, '#ff4444');
-                }
-            })
-            .catch(error => {
-                addToOutput('Network Error: ' + error.message, '#ff4444');
-            });
-        }
-        
-        function addToOutput(text, color = '#00ff00') {
-            const output = document.getElementById('output');
-            const line = document.createElement('div');
-            line.style.color = color;
-            line.textContent = text;
-            output.appendChild(line);
-            output.scrollTop = output.scrollHeight;
-        }
-        
-        function clearOutput() {
-            document.getElementById('output').innerHTML = 'Output cleared.\\n\\n';
-        }
-    </script>
-</body>
-</html>
-            """
-            self.wfile.write(html_content.encode('utf-8'))
-        
-        elif self.path == '/status':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            
-            status = {
-                'status': 'running',
-                'timestamp': datetime.now().isoformat(),
-                'working_directory': os.getcwd(),
-                'python_version': sys.version
-            }
-            self.wfile.write(json.dumps(status).encode('utf-8'))
-        
-        else:
-            self.send_response(404)
-            self.end_headers()
-            self.wfile.write(b'Not Found')
+class CommandAPIHandler(http.server.BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        """Handle CORS preflight requests"""
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
     
     def do_POST(self):
         """Handle command execution"""
-        if self.path == '/execute':
+        if self.path == '/api/command':
             try:
+                # Read request data
                 content_length = int(self.headers['Content-Length'])
                 post_data = self.rfile.read(content_length)
                 data = json.loads(post_data.decode('utf-8'))
                 
                 command = data.get('command', '').strip()
                 if not command:
-                    self.send_json_response({'error': 'No command provided', 'success': False})
-                    return
-                
-                # Security: Basic command filtering (add more as needed)
-                dangerous_commands = ['rm -rf /', 'mkfs', 'dd if=', 'format', ':(){ :|:& };:']
-                if any(danger in command.lower() for danger in dangerous_commands):
-                    self.send_json_response({
-                        'error': 'Command blocked for security reasons',
-                        'output': '',
-                        'success': False
-                    })
+                    self.send_json_response({'error': 'No command provided'}, 400)
                     return
                 
                 # Execute command
@@ -735,96 +569,77 @@ class WebShellHandler(http.server.BaseHTTPRequestHandler):
                         shell=True,
                         capture_output=True,
                         text=True,
-                        timeout=30,  # 30 second timeout
-                        cwd=os.getcwd()
+                        timeout=30
                     )
                     
+                    # Combine stdout and stderr
                     output = result.stdout
                     if result.stderr:
-                        output += "\\nSTDERR:\\n" + result.stderr
+                        output += result.stderr
                     
-                    self.send_json_response({
+                    response_data = {
+                        'command': command,
                         'output': output or '(No output)',
                         'return_code': result.returncode,
-                        'success': result.returncode == 0,
-                        'command': command,
-                        'timestamp': datetime.now().isoformat()
-                    })
+                        'success': result.returncode == 0
+                    }
+                    
+                    self.send_json_response(response_data)
                     
                 except subprocess.TimeoutExpired:
                     self.send_json_response({
                         'error': 'Command timed out (30s limit)',
-                        'output': '',
-                        'success': False
-                    })
+                        'command': command
+                    }, 408)
                 
                 except Exception as e:
                     self.send_json_response({
                         'error': f'Execution error: {str(e)}',
-                        'output': '',
-                        'success': False
-                    })
+                        'command': command
+                    }, 500)
                     
+            except json.JSONDecodeError:
+                self.send_json_response({'error': 'Invalid JSON'}, 400)
             except Exception as e:
-                self.send_json_response({
-                    'error': f'Request error: {str(e)}',
-                    'success': False
-                })
+                self.send_json_response({'error': f'Request error: {str(e)}'}, 500)
         else:
-            self.send_response(404)
-            self.end_headers()
+            self.send_json_response({'error': 'Endpoint not found'}, 404)
     
-    def send_json_response(self, data):
-        """Send JSON response"""
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
+    def send_json_response(self, data, status_code=200):
+        """Send JSON response with CORS headers"""
+        self.send_response(status_code)
+        self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
         self.wfile.write(json.dumps(data).encode('utf-8'))
     
     def log_message(self, format, *args):
-        """Custom logging"""
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        print(f'[{timestamp}] {format % args}')
+        """Simple logging"""
+        print(f"[{self.date_time_string()}] {format % args}")
 
 def main():
-    """Main function to start the web shell server"""
+    PORT = int(os.environ.get('PORT', 8080))
+    
+    print("🔧 Simple Command API Server")
+    print(f"📡 Starting on port {PORT}")
+    print(f"📍 Working directory: {os.getcwd()}")
+    print(f"🌐 API endpoint: http://localhost:{PORT}/api/command")
+    print("\n📝 Usage:")
+    print("  POST /api/command")
+    print('  Body: {"command": "ls -la"}')
+    print("\n⚠️  WARNING: Only use on trusted networks!")
+    
     try:
-        PORT = int(os.environ.get('PORT', 8080))
-        
-        print("=" * 50)
-        print("🖥️  WEB SHELL SERVER")
-        print("=" * 50)
-        print(f"Starting server on port {PORT}")
-        print(f"Working directory: {os.getcwd()}")
-        print(f"Python version: {sys.version}")
-        print("=" * 50)
-        print(f"🌐 Access the web shell at:")
-        print(f"   http://localhost:{PORT}")
-        print(f"   http://0.0.0.0:{PORT}")
-        print("=" * 50)
-        print("⚠️  WARNING: This creates a web-accessible shell!")
-        print("   Only use on trusted networks or for testing.")
-        print("=" * 50)
-        
-        # Create and start server
-        with socketserver.TCPServer(("", PORT), WebShellHandler) as httpd:
-            print(f"✅ Server started successfully on port {PORT}")
-            print("Press Ctrl+C to stop the server")
-            print("-" * 50)
+        with socketserver.TCPServer(("", PORT), CommandAPIHandler) as httpd:
+            print(f"\n✅ Server running on port {PORT}")
+            print("Press Ctrl+C to stop")
             httpd.serve_forever()
-            
     except KeyboardInterrupt:
-        print("\\n🛑 Server stopped by user")
-    except PermissionError:
-        print(f"❌ Permission denied. Try a different port or run with sudo.")
-        print(f"   Example: python3 web-shell.py")
-        print(f"   Or set PORT environment variable: PORT=8081 python3 web-shell.py")
+        print("\n🛑 Server stopped")
     except Exception as e:
-        print(f"❌ Error starting server: {e}")
-        print("💡 Try: python3 web-shell.py")
+        print(f"\n❌ Error: {e}")
 
 if __name__ == "__main__":
     main()`
@@ -1517,7 +1332,7 @@ echo "=== Complete ==="\`;
 
 function loadWebShellTemplate() {
     const template = \`#!/usr/bin/env python3
-# Web-based Interactive Shell Server
+# Simple Command API Server
 # FOR DEFENSIVE SECURITY TESTING ONLY
 
 import http.server
@@ -1525,106 +1340,115 @@ import socketserver
 import subprocess
 import json
 import os
-import sys
-from datetime import datetime
 
-class WebShellHandler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == '/' or self.path == '/shell':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            
-            html_content = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Web Shell Interface</title>
-    <style>
-        body { font-family: monospace; background: #1a1a1a; color: #00ff00; padding: 20px; }
-        .terminal { background: #000; border: 2px solid #333; padding: 15px; min-height: 400px; }
-        .output { white-space: pre-wrap; margin-bottom: 10px; max-height: 350px; overflow-y: auto; }
-        #command { background: #222; border: 1px solid #555; color: #00ff00; padding: 8px; width: 80%; }
-        .execute-btn { background: #007acc; color: white; border: none; padding: 8px 15px; cursor: pointer; }
-    </style>
-</head>
-<body>
-    <h1>🖥️ Web Shell Interface</h1>
-    <div class="terminal">
-        <div class="output" id="output">Web Shell Ready...\\\\n</div>
-        <input type="text" id="command" placeholder="Enter command..." onkeypress="if(event.key==='Enter') executeCommand()">
-        <button class="execute-btn" onclick="executeCommand()">Execute</button>
-    </div>
-    
-    <script>
-        function executeCommand() {
-            const cmd = document.getElementById('command').value.trim();
-            if (!cmd) return;
-            
-            document.getElementById('command').value = '';
-            addToOutput('$ ' + cmd);
-            
-            fetch('/execute', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: cmd })
-            })
-            .then(r => r.json())
-            .then(data => addToOutput(data.output || 'No output'))
-            .catch(e => addToOutput('Error: ' + e.message));
-        }
-        
-        function addToOutput(text) {
-            const output = document.getElementById('output');
-            output.textContent += text + '\\\\n';
-            output.scrollTop = output.scrollHeight;
-        }
-    </script>
-</body>
-</html>
-            """
-            self.wfile.write(html_content.encode('utf-8'))
-        else:
-            self.send_response(404)
-            self.end_headers()
+class CommandAPIHandler(http.server.BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        """Handle CORS preflight requests"""
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
     
     def do_POST(self):
-        if self.path == '/execute':
-            content_length = int(self.headers['Content-Length'])
-            data = json.loads(self.rfile.read(content_length).decode('utf-8'))
-            command = data.get('command', '').strip()
-            
+        """Handle command execution"""
+        if self.path == '/api/command':
             try:
-                result = subprocess.run(
-                    command, shell=True, capture_output=True, 
-                    text=True, timeout=30
-                )
-                output = result.stdout + result.stderr
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({'output': output}).encode('utf-8'))
+                # Read request data
+                content_length = int(self.headers['Content-Length'])
+                post_data = self.rfile.read(content_length)
+                data = json.loads(post_data.decode('utf-8'))
+                
+                command = data.get('command', '').strip()
+                if not command:
+                    self.send_json_response({'error': 'No command provided'}, 400)
+                    return
+                
+                # Execute command
+                try:
+                    result = subprocess.run(
+                        command,
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    
+                    # Combine stdout and stderr
+                    output = result.stdout
+                    if result.stderr:
+                        output += result.stderr
+                    
+                    response_data = {
+                        'command': command,
+                        'output': output or '(No output)',
+                        'return_code': result.returncode,
+                        'success': result.returncode == 0
+                    }
+                    
+                    self.send_json_response(response_data)
+                    
+                except subprocess.TimeoutExpired:
+                    self.send_json_response({
+                        'error': 'Command timed out (30s limit)',
+                        'command': command
+                    }, 408)
+                
+                except Exception as e:
+                    self.send_json_response({
+                        'error': f'Execution error: {str(e)}',
+                        'command': command
+                    }, 500)
+                    
+            except json.JSONDecodeError:
+                self.send_json_response({'error': 'Invalid JSON'}, 400)
             except Exception as e:
-                self.send_response(500)
-                self.send_header('Content-type', 'application/json')  
-                self.end_headers()
-                self.wfile.write(json.dumps({'output': str(e)}).encode('utf-8'))
+                self.send_json_response({'error': f'Request error: {str(e)}'}, 500)
+        else:
+            self.send_json_response({'error': 'Endpoint not found'}, 404)
+    
+    def send_json_response(self, data, status_code=200):
+        """Send JSON response with CORS headers"""
+        self.send_response(status_code)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode('utf-8'))
+    
+    def log_message(self, format, *args):
+        """Simple logging"""
+        print(f"[{self.date_time_string()}] {format % args}")
 
 def main():
     PORT = int(os.environ.get('PORT', 8080))
-    print(f"🖥️ Starting Web Shell on port {PORT}")
-    print(f"🌐 Access at: http://localhost:{PORT}")
-    print("⚠️ WARNING: Web-accessible shell - use responsibly!")
     
-    with socketserver.TCPServer(("", PORT), WebShellHandler) as httpd:
-        httpd.serve_forever()
+    print("🔧 Simple Command API Server")
+    print(f"📡 Starting on port {PORT}")
+    print(f"📍 Working directory: {os.getcwd()}")
+    print(f"🌐 API endpoint: http://localhost:{PORT}/api/command")
+    print("\\n📝 Usage:")
+    print("  POST /api/command")
+    print('  Body: {"command": "ls -la"}')
+    print("\\n⚠️  WARNING: Only use on trusted networks!")
+    
+    try:
+        with socketserver.TCPServer(("", PORT), CommandAPIHandler) as httpd:
+            print(f"\\n✅ Server running on port {PORT}")
+            print("Press Ctrl+C to stop")
+            httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\\n🛑 Server stopped")
+    except Exception as e:
+        print(f"\\n❌ Error: {e}")
 
 if __name__ == "__main__":
     main()\`;
     
     document.getElementById('scriptContent').value = template;
     document.getElementById('scriptName').value = 'web-shell.py';
-    log('Web shell template loaded', 'success');
+    log('Simple Command API template loaded', 'success');
 }
 
 // Initialize when DOM is loaded
@@ -1898,7 +1722,7 @@ export default {
             </li>
             <li class="file-item">
                 <a href="/files/web-shell" class="file-link" style="color: #9c27b0; font-weight: bold;">🐍 web-shell.py</a>
-                <div class="file-desc">Interactive web-based shell server - Python HTTP server with terminal interface</div>
+                <div class="file-desc">Simple command API server - POST commands to /api/command and get results</div>
             </li>
             <li class="file-item">
                 <a href="/files/basic-info" class="file-link">basic-info.sh</a>
