@@ -2832,6 +2832,11 @@ async function getHTMLContent() {
     <div class="container">
         <h1>📁 Shell Scripts Repository</h1>
         <p class="subtitle">Download security testing and system analysis scripts</p>
+        
+        <div class="navigation" style="text-align: center; margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 10px;">
+            <a href="/" style="display: inline-block; background: #667eea; color: white; padding: 10px 20px; margin: 0 10px; text-decoration: none; border-radius: 25px; transition: all 0.3s ease;">🏠 Main View</a>
+            <a href="/browse" style="display: inline-block; background: #28a745; color: white; padding: 10px 20px; margin: 0 10px; text-decoration: none; border-radius: 25px; transition: all 0.3s ease;">🔍 Dynamic Browser</a>
+        </div>
 
         <div class="files-section">
             <h3>📁 Available Shell Scripts</h3>
@@ -3242,7 +3247,7 @@ function getBrowsePageHTML() {
         document.addEventListener('DOMContentLoaded', loadFiles);
     </script>
 </body>
-</html>\`;
+</html>`;
 }
 
 function getFileList() {
@@ -3308,7 +3313,7 @@ function handleDynamicDownload(filename) {
   return new Response(fileContent, {
     headers: {
       'Content-Type': 'application/octet-stream',
-      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Disposition': 'attachment; filename="' + filename + '"',
       'Access-Control-Allow-Origin': '*',
     },
   });
@@ -3384,7 +3389,7 @@ export default {
         return new Response(fileContent, {
           headers: {
             'Content-Type': 'application/octet-stream',
-            'Content-Disposition': `attachment; filename="${downloadFilename}"`,
+            'Content-Disposition': 'attachment; filename="' + downloadFilename + '"',
             ...corsHeaders,
           },
         });
