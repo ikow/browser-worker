@@ -1987,7 +1987,7 @@ ping_sweep() {
     
     # Scan remaining IPs
     for i in $scan_range; do
-        local ip="\${subnet}.\\${i}"
+        local ip="\${subnet}.\\$i"
         
         # Skip IPs we already know about
         if [ "$subnet" = "172.30.0" ] && [[ "$i" =~ ^(2|3|4)$ ]]; then
@@ -1999,19 +1999,19 @@ ping_sweep() {
         
         # Show progress every 50 hosts for large ranges
         if [ "$subnet" = "172.18.0" ] && [ $((i % 50)) -eq 0 ]; then
-            log "\${CYAN}[PROGRESS]\${NC} Scanning $ip..."
+            log "\${CYAN}[PROGRESS]\${NC} Scanning \\$ip..."
         fi
         
         # Ping with short timeout
-        if timeout 2 ping -c 1 -W 1 "$ip" >/dev/null 2>&1; then
-            echo "$ip" >> "$results_file"
-            log "\${GREEN}[LIVE]\${NC} $ip is alive"
+        if timeout 2 ping -c 1 -W 1 "\\$ip" >/dev/null 2>&1; then
+            echo "\\$ip" >> "\\$results_file"
+            log "\${GREEN}[LIVE]\${NC} \\$ip is alive"
             ((live_count++))
         fi
     done
     
-    log "\${BLUE}[SUMMARY]\${NC} Found $live_count live hosts in $subnet"
-    echo "$live_count" > "$RESULTS_DIR/live_count_\${subnet_name}.txt"
+    log "\${BLUE}[SUMMARY]\${NC} Found \\$live_count live hosts in \\$subnet"
+    echo "\\$live_count" > "\\$RESULTS_DIR/live_count_\${subnet_name}.txt"
 }
 
 # TCP port scanning function
@@ -2049,16 +2049,16 @@ port_scan() {
     local open_ports=()
     
     for port in \${ports//,/ }; do
-        if timeout 3 bash -c "echo >/dev/tcp/$ip/$port" 2>/dev/null; then
-            echo "$port/tcp open" >> "$results_file"
-            open_ports+=("$port")
-            log "\${GREEN}[OPEN]\${NC} $ip:$port"
+        if timeout 3 bash -c "echo >/dev/tcp/\\$ip/\\$port" 2>/dev/null; then
+            echo "\\$port/tcp open" >> "\\$results_file"
+            open_ports+=("\\$port")
+            log "\${GREEN}[OPEN]\${NC} \\$ip:\\$port"
         fi
     done
     
     # Store open ports count
-    echo "\${#open_ports[@]}" > "$RESULTS_DIR/openports_count_\${ip//./_}.txt"
-    echo "\${open_ports[*]}" > "$RESULTS_DIR/openports_list_\${ip//./_}.txt"
+    echo "\${#open_ports[@]}" > "\\$RESULTS_DIR/openports_count_\${ip//./_}.txt"
+    echo "\${open_ports[*]}" > "\\$RESULTS_DIR/openports_list_\${ip//./_}.txt"
     
     return \${#open_ports[@]}
 }
