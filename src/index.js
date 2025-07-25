@@ -628,7 +628,7 @@ export default {
         if (filename === 'web-shell') {
           downloadFilename = 'web-shell';
         } else if (!filename.includes('.')) {
-          downloadFilename = filename + '.sh';
+          downloadFilename = filename;
         }
         
         return new Response(fileContent, {
