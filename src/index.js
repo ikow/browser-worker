@@ -527,7 +527,7 @@ find /home /tmp /var -type f -mtime -1 2>/dev/null | head -10
 echo
 
 echo "=== Service Probe Complete ==="
-echo "Scan finished: $(date)"`,
+echo "Scan finished: $(date)"`
 };
 
 export default {
