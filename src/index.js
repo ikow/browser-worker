@@ -3984,11 +3984,11 @@ export default {
         if (filename === 'web-shell') {
           downloadFilename = 'web-shell.py';
         } else if (filename === 'supervisor-recon') {
-          downloadFilename = 'supervisor-recon.py';
+          downloadFilename = 'supervisor-recon';
         } else if (filename === 'path-finder') {
-          downloadFilename = 'path-finder.py';
+          downloadFilename = 'path-finder';
         } else if (!filename.includes('.')) {
-          downloadFilename = filename + '.sh';
+          downloadFilename = filename;
         }
         
         return new Response(fileContent, {
