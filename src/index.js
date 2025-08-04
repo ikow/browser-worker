@@ -2765,7 +2765,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class PathFinder:
-    def __init__(self, base_url, threads=20, timeout=5, delay=0):
+    def __init__(self, base_url, threads=20, timeout=5, delay=0, use_proxy=False, proxy_host=None, proxy_port=None):
         self.base_url = base_url.rstrip('/')
         self.threads = threads
         self.timeout = timeout
@@ -2783,6 +2783,21 @@ class PathFinder:
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
+        
+        # Configure proxy if needed
+        if use_proxy or proxy_host:
+            proxy_host = proxy_host or "proxy.local"
+            proxy_port = proxy_port or 8888
+            
+            proxy_url = f"http://{proxy_host}:{proxy_port}"
+            proxies = {
+                'http': proxy_url,
+                'https': proxy_url
+            }
+            self.session.proxies.update(proxies)
+            print(f"[*] Using corporate proxy: {proxy_url}")
+        else:
+            print("[*] Direct connection (no proxy)")
         
         # User agents for rotation
         self.user_agents = [
@@ -3246,15 +3261,15 @@ class PathFinder:
                     # Color coding for output
                     color = ""
                     if status_code == 200:
-                        color = "\\033[92m"  # Green
+                        color = "\033[92m"  # Green
                     elif status_code in [301, 302]:
-                        color = "\\033[93m"  # Yellow
+                        color = "\033[93m"  # Yellow
                     elif status_code in [401, 403]:
-                        color = "\\033[91m"  # Red
+                        color = "\033[91m"  # Red
                     elif status_code == 405:
-                        color = "\\033[94m"  # Blue
+                        color = "\033[94m"  # Blue
                     
-                    print(f"{color}[{status_code}] {url} ({content_length} bytes) - {reason}\\033[0m")
+                    print(f"{color}[{status_code}] {url} ({content_length} bytes) - {reason}\033[0m")
                     
                     if server:
                         print(f"    Server: {server}")
@@ -3283,7 +3298,7 @@ class PathFinder:
         
         end_time = time.time()
         
-        print("\\n" + "=" * 80)
+        print("\n" + "=" * 80)
         print(f"[*] Discovery completed in {end_time - start_time:.2f} seconds")
         print(f"[+] Found {len(self.found_paths)} interesting paths:")
         
@@ -3293,13 +3308,13 @@ class PathFinder:
         for result in self.found_paths:
             status_color = ""
             if result['status'] == 200:
-                status_color = "\\033[92m"
+                status_color = "\033[92m"
             elif result['status'] in [301, 302]:
-                status_color = "\\033[93m"
+                status_color = "\033[93m"
             elif result['status'] in [401, 403]:
-                status_color = "\\033[91m"
+                status_color = "\033[91m"
             
-            print(f"{status_color}[{result['status']}] {result['url']}\\033[0m")
+            print(f"{status_color}[{result['status']}] {result['url']}\033[0m")
             print(f"    Size: {result['length']} bytes")
             print(f"    Reason: {result['reason']}")
             if result['content_type']:
@@ -3314,8 +3329,15 @@ def main():
     parser.add_argument('-t', '--threads', type=int, default=20, help='Number of threads (default: 20)')
     parser.add_argument('--timeout', type=int, default=5, help='Request timeout in seconds (default: 5)')
     parser.add_argument('--delay', type=float, default=0, help='Delay between requests in seconds (default: 0)')
+    parser.add_argument('--proxy', action='store_true', help='Use corporate proxy (proxy.local:8888)')
+    parser.add_argument('--proxy-host', type=str, help='Custom proxy host (default: proxy.local)')
+    parser.add_argument('--proxy-port', type=int, help='Custom proxy port (default: 8888)')
     
     args = parser.parse_args()
+    
+    # Corporate proxy settings
+    CORPORATE_PROXY_HOST = "proxy.local"
+    CORPORATE_PROXY_PORT = 8888
     
     # Validate URL
     parsed_url = urlparse(args.url)
@@ -3327,16 +3349,34 @@ def main():
     print(f"Threads: {args.threads}")
     print(f"Timeout: {args.timeout}s")
     print(f"Delay: {args.delay}s")
+    
+    # Determine proxy settings
+    proxy_host = args.proxy_host or CORPORATE_PROXY_HOST
+    proxy_port = args.proxy_port or CORPORATE_PROXY_PORT
+    
+    if args.proxy or args.proxy_host or args.proxy_port:
+        print(f"Proxy: {proxy_host}:{proxy_port}")
+    else:
+        print("Proxy: None (direct connection)")
+    
     print("=" * 80)
     
-    finder = PathFinder(args.url, args.threads, args.timeout, args.delay)
+    finder = PathFinder(
+        args.url, 
+        args.threads, 
+        args.timeout, 
+        args.delay,
+        use_proxy=args.proxy or args.proxy_host or args.proxy_port,
+        proxy_host=proxy_host,
+        proxy_port=proxy_port
+    )
     finder.run_discovery()
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\\n[!] Discovery interrupted by user")
+        print("\n[!] Discovery interrupted by user")
         sys.exit(1)
     except Exception as e:
         print(f"[!] Error: {e}")
