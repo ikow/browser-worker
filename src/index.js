@@ -2742,7 +2742,605 @@ def main():
         print(f"\\n[!] Assessment failed: {e}")
 
 if __name__ == "__main__":
-    main()`
+    main()`,
+
+  'path-finder': `#!/usr/bin/env python3
+"""
+Web Path Discovery Tool for Red Team Assessments
+Usage: python path_finder.py -u https://tesla.com
+"""
+
+import requests
+import argparse
+import sys
+import time
+from urllib.parse import urljoin, urlparse
+import concurrent.futures
+import threading
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import urllib3
+
+# Disable SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+class PathFinder:
+    def __init__(self, base_url, threads=20, timeout=5, delay=0):
+        self.base_url = base_url.rstrip('/')
+        self.threads = threads
+        self.timeout = timeout
+        self.delay = delay
+        self.found_paths = []
+        self.lock = threading.Lock()
+        
+        # Setup session with retry strategy
+        self.session = requests.Session()
+        retry_strategy = Retry(
+            total=2,
+            backoff_factor=0.3,
+            status_forcelist=[429, 500, 502, 503, 504],
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+        
+        # User agents for rotation
+        self.user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0'
+        ]
+        
+        # Comprehensive path list
+        self.paths = [
+            # Common files
+            '/robots.txt',
+            '/sitemap.xml',
+            '/sitemap.txt',
+            '/humans.txt',
+            '/favicon.ico',
+            '/crossdomain.xml',
+            '/clientaccesspolicy.xml',
+            '/.well-known/security.txt',
+            '/.well-known/mta-sts.txt',
+            '/security.txt',
+            '/ads.txt',
+            '/app-ads.txt',
+            
+            # Admin and login panels
+            '/admin',
+            '/admin/',
+            '/administrator',
+            '/administration',
+            '/adminpanel',
+            '/admin-panel',
+            '/admin_panel',
+            '/control',
+            '/controlpanel',
+            '/cp',
+            '/login',
+            '/login/',
+            '/signin',
+            '/sign-in',
+            '/user/login',
+            '/auth',
+            '/authentication',
+            '/oauth',
+            '/sso',
+            '/portal',
+            '/dashboard',
+            '/console',
+            '/manager',
+            '/management',
+            '/moderator',
+            '/webmaster',
+            '/root',
+            '/super',
+            '/superuser',
+            '/wp-admin',
+            '/wp-login.php',
+            '/wp-admin/admin-ajax.php',
+            
+            # API endpoints
+            '/api',
+            '/api/',
+            '/api/v1',
+            '/api/v2',
+            '/api/v3',
+            '/apis',
+            '/rest',
+            '/restapi',
+            '/rest-api',
+            '/graphql',
+            '/webhook',
+            '/webhooks',
+            '/endpoint',
+            '/endpoints',
+            '/service',
+            '/services',
+            '/microservice',
+            '/rpc',
+            '/jsonrpc',
+            '/soap',
+            '/wsdl',
+            '/swagger',
+            '/swagger-ui',
+            '/swagger.json',
+            '/openapi.json',
+            '/api-docs',
+            '/docs/api',
+            
+            # Development and testing
+            '/dev',
+            '/development',
+            '/test',
+            '/testing',
+            '/stage',
+            '/staging',
+            '/demo',
+            '/sandbox',
+            '/beta',
+            '/alpha',
+            '/preview',
+            '/tmp',
+            '/temp',
+            '/debug',
+            '/trace',
+            '/logs',
+            '/log',
+            '/error',
+            '/errors',
+            '/status',
+            '/health',
+            '/healthcheck',
+            '/ping',
+            '/version',
+            '/info',
+            '/server-info',
+            '/server-status',
+            '/phpinfo.php',
+            '/info.php',
+            
+            # Configuration and sensitive files
+            '/.env',
+            '/.env.local',
+            '/.env.production',
+            '/.env.development',
+            '/config',
+            '/configuration',
+            '/settings',
+            '/preferences',
+            '/.htaccess',
+            '/.htpasswd',
+            '/web.config',
+            '/httpd.conf',
+            '/nginx.conf',
+            '/apache.conf',
+            '/.nginx',
+            '/.apache',
+            '/config.php',
+            '/config.json',
+            '/config.xml',
+            '/config.yml',
+            '/config.yaml',
+            '/application.properties',
+            '/database.yml',
+            '/secrets',
+            '/credentials',
+            '/keys',
+            
+            # Version control and backups
+            '/.git',
+            '/.git/',
+            '/.git/config',
+            '/.git/HEAD',
+            '/.git/logs/HEAD',
+            '/.gitignore',
+            '/.gitlab-ci.yml',
+            '/.github',
+            '/.svn',
+            '/.svn/',
+            '/.hg',
+            '/.bzr',
+            '/backup',
+            '/backups',
+            '/bak',
+            '/old',
+            '/archive',
+            '/archives',
+            '/dump',
+            '/dumps',
+            '/sql',
+            '/database',
+            '/db',
+            '/data',
+            '/.backup',
+            '/backup.sql',
+            '/backup.tar.gz',
+            '/backup.zip',
+            '/site.zip',
+            '/website.zip',
+            
+            # Content management
+            '/cms',
+            '/blog',
+            '/news',
+            '/articles',
+            '/posts',
+            '/pages',
+            '/content',
+            '/media',
+            '/uploads',
+            '/upload',
+            '/files',
+            '/file',
+            '/download',
+            '/downloads',
+            '/assets',
+            '/static',
+            '/public',
+            '/images',
+            '/img',
+            '/pics',
+            '/pictures',
+            '/photo',
+            '/photos',
+            '/gallery',
+            '/css',
+            '/js',
+            '/javascript',
+            '/fonts',
+            '/themes',
+            '/templates',
+            '/includes',
+            
+            # E-commerce and business
+            '/shop',
+            '/store',
+            '/cart',
+            '/checkout',
+            '/payment',
+            '/payments',
+            '/billing',
+            '/invoice',
+            '/invoices',
+            '/order',
+            '/orders',
+            '/product',
+            '/products',
+            '/catalog',
+            '/inventory',
+            '/account',
+            '/accounts',
+            '/profile',
+            '/profiles',
+            '/user',
+            '/users',
+            '/customer',
+            '/customers',
+            '/client',
+            '/clients',
+            
+            # Documentation and help
+            '/help',
+            '/support',
+            '/faq',
+            '/docs',
+            '/documentation',
+            '/manual',
+            '/guide',
+            '/tutorial',
+            '/readme',
+            '/readme.txt',
+            '/README.md',
+            '/wiki',
+            '/about',
+            '/contact',
+            '/privacy',
+            '/terms',
+            '/legal',
+            '/policy',
+            '/disclaimer',
+            
+            # Monitoring and analytics
+            '/stats',
+            '/statistics',
+            '/metrics',
+            '/analytics',
+            '/reports',
+            '/report',
+            '/monitor',
+            '/monitoring',
+            '/uptime',
+            '/performance',
+            '/benchmark',
+            '/load',
+            '/stress',
+            '/usage',
+            
+            # Security and compliance
+            '/security',
+            '/audit',
+            '/compliance',
+            '/pentest',
+            '/vulnerability',
+            '/scan',
+            '/check',
+            '/verify',
+            '/validate',
+            '/cert',
+            '/certificate',
+            '/ssl',
+            '/tls',
+            
+            # Infrastructure and tools
+            '/phpmyadmin',
+            '/pma',
+            '/mysql',
+            '/postgres',
+            '/mongodb',
+            '/redis',
+            '/elasticsearch',
+            '/kibana',
+            '/grafana',
+            '/prometheus',
+            '/jenkins',
+            '/gitlab',
+            '/jira',
+            '/confluence',
+            '/sonar',
+            '/nexus',
+            '/artifactory',
+            '/docker',
+            '/kubernetes',
+            '/k8s',
+            
+            # Mobile and app related
+            '/mobile',
+            '/app',
+            '/application',
+            '/android',
+            '/ios',
+            '/iphone',
+            '/ipad',
+            '/tablet',
+            '/pwa',
+            '/manifest.json',
+            '/sw.js',
+            '/service-worker.js',
+            
+            # Social and communication
+            '/social',
+            '/facebook',
+            '/twitter',
+            '/linkedin',
+            '/instagram',
+            '/youtube',
+            '/feed',
+            '/rss',
+            '/atom',
+            '/sitemap',
+            '/search',
+            '/subscribe',
+            '/newsletter',
+            '/mail',
+            '/email',
+            '/contact-us',
+            
+            # File extensions to check
+            '/index.php',
+            '/index.html',
+            '/index.htm',
+            '/default.php',
+            '/default.html',
+            '/home.php',
+            '/main.php',
+            '/test.php',
+            '/phpinfo.php',
+            '/info.php',
+            '/admin.php',
+            '/login.php',
+            '/config.php',
+            '/database.php',
+            '/connect.php',
+            '/connection.php',
+            '/setup.php',
+            '/install.php',
+            '/installer.php',
+            '/update.php',
+            '/upgrade.php',
+            '/backup.php',
+            '/export.php',
+            '/import.php',
+            '/upload.php',
+            '/file.php',
+            '/files.php',
+            '/image.php',
+            '/images.php',
+            '/download.php',
+            '/downloads.php'
+        ]
+
+    def check_path(self, path):
+        """Check if a path exists and return response details"""
+        url = urljoin(self.base_url, path)
+        
+        try:
+            headers = {
+                'User-Agent': self.user_agents[hash(path) % len(self.user_agents)],
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Cache-Control': 'no-cache'
+            }
+            
+            response = self.session.get(
+                url,
+                headers=headers,
+                timeout=self.timeout,
+                verify=False,
+                allow_redirects=True
+            )
+            
+            # Analyze response
+            status_code = response.status_code
+            content_length = len(response.content)
+            content_type = response.headers.get('Content-Type', '').lower()
+            server = response.headers.get('Server', '')
+            
+            # Determine if this is interesting
+            interesting = False
+            reason = ""
+            
+            if status_code == 200:
+                interesting = True
+                reason = "OK"
+            elif status_code == 301 or status_code == 302:
+                redirect_location = response.headers.get('Location', '')
+                if redirect_location and not any(x in redirect_location.lower() for x in ['login', 'error', '404', 'notfound']):
+                    interesting = True
+                    reason = f"Redirect to {redirect_location}"
+            elif status_code == 403:
+                interesting = True
+                reason = "Forbidden (may indicate file exists)"
+            elif status_code == 401:
+                interesting = True
+                reason = "Unauthorized (authentication required)"
+            elif status_code == 405:
+                interesting = True
+                reason = "Method Not Allowed (endpoint exists)"
+            
+            # Additional checks for interesting content
+            if interesting or status_code == 200:
+                response_text = response.text.lower()
+                
+                # Check for interesting keywords in response
+                interesting_keywords = [
+                    'password', 'admin', 'login', 'database', 'config', 'api',
+                    'debug', 'error', 'exception', 'stack trace', 'sql',
+                    'version', 'build', 'git', 'svn', 'backup'
+                ]
+                
+                for keyword in interesting_keywords:
+                    if keyword in response_text:
+                        interesting = True
+                        if not reason or reason == "OK":
+                            reason = f"Contains '{keyword}'"
+                        break
+            
+            if interesting:
+                with self.lock:
+                    result = {
+                        'path': path,
+                        'url': url,
+                        'status': status_code,
+                        'length': content_length,
+                        'content_type': content_type,
+                        'server': server,
+                        'reason': reason
+                    }
+                    self.found_paths.append(result)
+                    
+                    # Color coding for output
+                    color = ""
+                    if status_code == 200:
+                        color = "\\033[92m"  # Green
+                    elif status_code in [301, 302]:
+                        color = "\\033[93m"  # Yellow
+                    elif status_code in [401, 403]:
+                        color = "\\033[91m"  # Red
+                    elif status_code == 405:
+                        color = "\\033[94m"  # Blue
+                    
+                    print(f"{color}[{status_code}] {url} ({content_length} bytes) - {reason}\\033[0m")
+                    
+                    if server:
+                        print(f"    Server: {server}")
+                    if content_type:
+                        print(f"    Content-Type: {content_type}")
+            
+            if self.delay > 0:
+                time.sleep(self.delay)
+                
+        except requests.exceptions.RequestException as e:
+            pass  # Silently ignore connection errors
+        except Exception as e:
+            pass  # Silently ignore other errors
+
+    def run_discovery(self):
+        """Run path discovery with threading"""
+        print(f"[*] Starting path discovery on: {self.base_url}")
+        print(f"[*] Testing {len(self.paths)} paths with {self.threads} threads")
+        print(f"[*] Timeout: {self.timeout}s, Delay: {self.delay}s")
+        print("=" * 80)
+        
+        start_time = time.time()
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
+            executor.map(self.check_path, self.paths)
+        
+        end_time = time.time()
+        
+        print("\\n" + "=" * 80)
+        print(f"[*] Discovery completed in {end_time - start_time:.2f} seconds")
+        print(f"[+] Found {len(self.found_paths)} interesting paths:")
+        
+        # Sort results by status code
+        self.found_paths.sort(key=lambda x: x['status'])
+        
+        for result in self.found_paths:
+            status_color = ""
+            if result['status'] == 200:
+                status_color = "\\033[92m"
+            elif result['status'] in [301, 302]:
+                status_color = "\\033[93m"
+            elif result['status'] in [401, 403]:
+                status_color = "\\033[91m"
+            
+            print(f"{status_color}[{result['status']}] {result['url']}\\033[0m")
+            print(f"    Size: {result['length']} bytes")
+            print(f"    Reason: {result['reason']}")
+            if result['content_type']:
+                print(f"    Content-Type: {result['content_type']}")
+            if result['server']:
+                print(f"    Server: {result['server']}")
+            print()
+
+def main():
+    parser = argparse.ArgumentParser(description='Web Path Discovery Tool for Red Team Assessments')
+    parser.add_argument('-u', '--url', required=True, help='Target URL (e.g., https://tesla.com)')
+    parser.add_argument('-t', '--threads', type=int, default=20, help='Number of threads (default: 20)')
+    parser.add_argument('--timeout', type=int, default=5, help='Request timeout in seconds (default: 5)')
+    parser.add_argument('--delay', type=float, default=0, help='Delay between requests in seconds (default: 0)')
+    
+    args = parser.parse_args()
+    
+    # Validate URL
+    parsed_url = urlparse(args.url)
+    if not parsed_url.scheme:
+        args.url = 'https://' + args.url
+    
+    print(f"Web Path Discovery Tool")
+    print(f"Target: {args.url}")
+    print(f"Threads: {args.threads}")
+    print(f"Timeout: {args.timeout}s")
+    print(f"Delay: {args.delay}s")
+    print("=" * 80)
+    
+    finder = PathFinder(args.url, args.threads, args.timeout, args.delay)
+    finder.run_discovery()
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\\n[!] Discovery interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"[!] Error: {e}")
+        sys.exit(1)`
 };
 
 // Function to get HTML content (files page only)
@@ -2889,6 +3487,10 @@ async function getHTMLContent() {
                 <li class="file-item">
                     <a href="/files/supervisor-recon" class="file-link" style="color: #fd7e14; font-weight: bold;">🐍 supervisor-recon.py</a>
                     <div class="file-desc">Supervisord Security Assessment - configuration analysis, file discovery, SUID/SGID detection, Azure metadata collection, comprehensive JSON reporting</div>
+                </li>
+                <li class="file-item">
+                    <a href="/files/path-finder" class="file-link" style="color: #e83e8c; font-weight: bold;">🔍 path-finder.py</a>
+                    <div class="file-desc">Web Path Discovery Tool - comprehensive web reconnaissance with 200+ common paths, admin panels, APIs, sensitive files, backups, threading support</div>
                 </li>
             </ul>
         </div>
@@ -3265,14 +3867,15 @@ function getFileList() {
     'proxy-test': 'Proxy Connectivity Testing - HTTP/SOCKS proxy verification, local domain resolution, http://go/ access validation, Python-based testing',
     'network-enum': 'Network Subnet Analysis - 172.30.0.*/172.18.0.* host discovery, port scanning, service detection, web path testing, comprehensive reporting',
     'web-shell': 'Simple Command API Server - HTTP endpoint for executing bash commands and returning results via GET requests',
-    'supervisor-recon': 'Supervisord Security Assessment - configuration analysis, file discovery, SUID/SGID detection, Azure metadata collection, comprehensive JSON reporting'
+    'supervisor-recon': 'Supervisord Security Assessment - configuration analysis, file discovery, SUID/SGID detection, Azure metadata collection, comprehensive JSON reporting',
+    'path-finder': 'Web Path Discovery Tool - comprehensive web reconnaissance with 200+ common paths, admin panels, APIs, sensitive files, backups, threading support'
   };
 
   const files = Object.keys(STATIC_FILES).map(filename => {
     let displayName = filename;
     
     // Add appropriate file extensions for display
-    if (filename === 'web-shell' || filename === 'supervisor-recon') {
+    if (filename === 'web-shell' || filename === 'supervisor-recon' || filename === 'path-finder') {
       displayName += '.py';
     } else if (!filename.includes('.')) {
       displayName += '.sh';
@@ -3382,6 +3985,8 @@ export default {
           downloadFilename = 'web-shell.py';
         } else if (filename === 'supervisor-recon') {
           downloadFilename = 'supervisor-recon.py';
+        } else if (filename === 'path-finder') {
+          downloadFilename = 'path-finder.py';
         } else if (!filename.includes('.')) {
           downloadFilename = filename + '.sh';
         }
