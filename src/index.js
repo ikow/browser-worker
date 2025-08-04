@@ -3261,15 +3261,15 @@ class PathFinder:
                     # Color coding for output
                     color = ""
                     if status_code == 200:
-                        color = "\033[92m"  # Green
+                        color = "\\x1b[92m"  # Green
                     elif status_code in [301, 302]:
-                        color = "\033[93m"  # Yellow
+                        color = "\\x1b[93m"  # Yellow
                     elif status_code in [401, 403]:
-                        color = "\033[91m"  # Red
+                        color = "\\x1b[91m"  # Red
                     elif status_code == 405:
-                        color = "\033[94m"  # Blue
+                        color = "\\x1b[94m"  # Blue
                     
-                    print(f"{color}[{status_code}] {url} ({content_length} bytes) - {reason}\033[0m")
+                    print(f"{color}[{status_code}] {url} ({content_length} bytes) - {reason}\\x1b[0m")
                     
                     if server:
                         print(f"    Server: {server}")
@@ -3298,7 +3298,7 @@ class PathFinder:
         
         end_time = time.time()
         
-        print("\n" + "=" * 80)
+        print("\\n" + "=" * 80)
         print(f"[*] Discovery completed in {end_time - start_time:.2f} seconds")
         print(f"[+] Found {len(self.found_paths)} interesting paths:")
         
@@ -3308,13 +3308,13 @@ class PathFinder:
         for result in self.found_paths:
             status_color = ""
             if result['status'] == 200:
-                status_color = "\033[92m"
+                status_color = "\\x1b[92m"
             elif result['status'] in [301, 302]:
-                status_color = "\033[93m"
+                status_color = "\\x1b[93m"
             elif result['status'] in [401, 403]:
-                status_color = "\033[91m"
+                status_color = "\\x1b[91m"
             
-            print(f"{status_color}[{result['status']}] {result['url']}\033[0m")
+            print(f"{status_color}[{result['status']}] {result['url']}\\x1b[0m")
             print(f"    Size: {result['length']} bytes")
             print(f"    Reason: {result['reason']}")
             if result['content_type']:
@@ -3376,7 +3376,7 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n[!] Discovery interrupted by user")
+        print("\\n[!] Discovery interrupted by user")
         sys.exit(1)
     except Exception as e:
         print(f"[!] Error: {e}")
